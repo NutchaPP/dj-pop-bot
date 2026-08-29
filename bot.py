@@ -6,10 +6,9 @@ from discord.ext import commands
 from dotenv import load_dotenv
 import yt_dlp
 
+
 # ==================================================
-
 # โหลด Token
-
 # ==================================================
 
 load_dotenv()
@@ -17,942 +16,712 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-raise ValueError(
-"ไม่พบ DISCORD_TOKEN ใน Environment Variables"
-)
+    raise ValueError("ไม่พบ DISCORD_TOKEN ใน Environment Variables")
+
 
 # ==================================================
-
 # Discord Intents
-
 # ==================================================
 
 intents = discord.Intents.default()
 intents.message_content = True
 
+
 # ==================================================
-
 # สร้าง Bot
-
 # ==================================================
 
 bot = commands.Bot(
-command_prefix="!",
-intents=intents
+    command_prefix="!",
+    intents=intents
 )
 
-# ==================================================
-
-# Path ของ cookies.txt
 
 # ==================================================
-
-BASE_DIR = os.path.dirname(
-os.path.abspath(**file**)
-)
-
-COOKIE_FILE = os.path.join(
-BASE_DIR,
-"cookies.txt"
-)
-
+# yt-dlp
 # ==================================================
 
-# ตรวจ cookies
-
-# ==================================================
-
-if os.path.exists(COOKIE_FILE):
-
-```
-print(
-    f"✅ พบ cookies.txt: {COOKIE_FILE}"
-)
-```
-
-else:
-
-```
-print(
-    "⚠️ ไม่พบ cookies.txt"
-)
-
-print(
-    "⚠️ Bot จะพยายามเล่น YouTube โดยไม่ใช้ cookies"
-)
-```
-
-# ==================================================
-
-# yt-dlp OPTIONS
-
-# ==================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
 
 YTDL_OPTIONS = {
-"format": "bestaudio/best",
+    "format": "bestaudio/best",
+    "noplaylist": True,
+    "quiet": False,
+    "no_warnings": False,
 
-```
-"noplaylist": True,
+    "default_search": "ytsearch1",
 
-"quiet": True,
+    "source_address": "0.0.0.0",
 
-"no_warnings": False,
+    "geo_bypass": True,
 
-"default_search": "ytsearch1",
+    "nocheckcertificate": True,
 
-"source_address": "0.0.0.0",
+    # ใช้ cookies.txt ถ้ามี
+    "cookiefile": COOKIES_FILE,
 
-"geo_bypass": True,
-
-"nocheckcertificate": True,
-
-# ใช้ cookies ถ้ามี
-"cookiefile": COOKIE_FILE
-if os.path.exists(COOKIE_FILE)
-else None,
-
-# YouTube clients
-"extractor_args": {
-    "youtube": {
-        "player_client": [
-            "android",
-            "web"
-        ]
-    }
-},
-```
-
+    "extractor_args": {
+        "youtube": {
+            "player_client": [
+                "android_vr",
+                "android",
+                "web"
+            ]
+        }
+    },
 }
 
+
 # ==================================================
-
 # FFmpeg
-
 # ==================================================
 
 FFMPEG_OPTIONS = {
-"before_options": (
-"-reconnect 1 "
-"-reconnect_streamed 1 "
-"-reconnect_delay_max 5 "
-"-nostdin"
-),
-"options": "-vn",
+    "before_options": (
+        "-reconnect 1 "
+        "-reconnect_streamed 1 "
+        "-reconnect_delay_max 5 "
+        "-nostdin"
+    ),
+    "options": "-vn",
 }
 
+
 # ==================================================
-
 # Queue
-
 # ==================================================
 
 music_queue = []
-
 current_song = None
 
+
+# ==================================================
+# ตรวจ cookies.txt
 # ==================================================
 
-# ค้นหาเพลง
+if os.path.exists(COOKIES_FILE):
+    print("✅ พบ cookies.txt แล้ว")
+else:
+    print("⚠️ ไม่พบ cookies.txt")
+    print(f"ตำแหน่งที่ต้องการ: {COOKIES_FILE}")
 
+
+# ==================================================
+# ค้นหาเพลง
 # ==================================================
 
 async def search_song(search):
 
-```
-loop = asyncio.get_running_loop()
+    loop = asyncio.get_running_loop()
 
-def extract():
+    def extract():
 
-    with yt_dlp.YoutubeDL(
-        YTDL_OPTIONS
-    ) as ydl:
+        with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
 
-        return ydl.extract_info(
-            f"ytsearch1:{search}",
-            download=False
+            return ydl.extract_info(
+                f"ytsearch1:{search}",
+                download=False
+            )
+
+    try:
+
+        info = await loop.run_in_executor(
+            None,
+            extract
         )
 
-try:
+        entries = info.get("entries")
 
-    info = await loop.run_in_executor(
-        None,
-        extract
-    )
+        if not entries:
+            return None
 
-    entries = info.get("entries")
+        song = entries[0]
 
-    if not entries:
-        return None
+        return {
+            "title": song.get(
+                "title",
+                search
+            ),
 
-    song = entries[0]
+            "url": song.get("url"),
 
-    webpage_url = song.get(
-        "webpage_url"
-    )
+            "webpage_url": song.get(
+                "webpage_url"
+            ),
+        }
 
-    title = song.get(
-        "title",
-        search
-    )
+    except Exception as e:
 
-    if not webpage_url:
-        return None
+        print("=" * 60)
+        print("❌ YOUTUBE SEARCH ERROR")
+        print(f"ประเภท: {type(e).__name__}")
+        print(f"รายละเอียด: {e}")
+        print("=" * 60)
 
-    print(
-        f"🔎 พบเพลง: {title}"
-    )
+        raise
 
-    print(
-        f"🔗 URL: {webpage_url}"
-    )
-
-    return {
-        "title": title,
-        "webpage_url": webpage_url,
-    }
-
-except Exception as e:
-
-    print("=" * 60)
-    print("❌ YOUTUBE SEARCH ERROR")
-    print(
-        f"ประเภท: {type(e).__name__}"
-    )
-    print(
-        f"รายละเอียด: {e}"
-    )
-    print("=" * 60)
-
-    raise
-```
 
 # ==================================================
-
-# ดึง Audio URL ใหม่
-
-# ==================================================
-
-async def get_audio_url(webpage_url):
-
-```
-loop = asyncio.get_running_loop()
-
-def extract_audio():
-
-    options = YTDL_OPTIONS.copy()
-
-    # ไม่ต้องค้นหาอีกครั้ง
-    options.pop(
-        "default_search",
-        None
-    )
-
-    with yt_dlp.YoutubeDL(
-        options
-    ) as ydl:
-
-        info = ydl.extract_info(
-            webpage_url,
-            download=False
-        )
-
-        return info
-
-try:
-
-    info = await loop.run_in_executor(
-        None,
-        extract_audio
-    )
-
-    audio_url = info.get("url")
-
-    if not audio_url:
-
-        raise RuntimeError(
-            "ไม่พบ Audio URL จาก YouTube"
-        )
-
-    return audio_url
-
-except Exception as e:
-
-    print("=" * 60)
-    print("❌ AUDIO URL ERROR")
-    print(
-        f"ประเภท: {type(e).__name__}"
-    )
-    print(
-        f"รายละเอียด: {e}"
-    )
-    print("=" * 60)
-
-    raise
-```
-
-# ==================================================
-
 # เล่นเพลงถัดไป
-
 # ==================================================
 
 async def play_next(ctx):
 
-```
-global current_song
+    global current_song
 
-voice = ctx.voice_client
+    voice = ctx.voice_client
 
-if voice is None:
-    return
+    if voice is None:
+        return
 
-# ----------------------------------------------
-# Queue หมด
-# ----------------------------------------------
+    # ------------------------------------------------
+    # Queue หมด
+    # ------------------------------------------------
 
-if not music_queue:
+    if not music_queue:
 
-    current_song = None
+        current_song = None
 
-    await ctx.send(
-        "📭 เพลงในคิวหมดแล้วครับ"
-    )
-
-    return
-
-# ----------------------------------------------
-# เอาเพลงจาก Queue
-# ----------------------------------------------
-
-current_song = music_queue.pop(0)
-
-title = current_song["title"]
-
-webpage_url = current_song[
-    "webpage_url"
-]
-
-# ----------------------------------------------
-# ดึง Audio URL ใหม่
-# ----------------------------------------------
-
-try:
-
-    print(
-        f"🎵 กำลังเตรียมเพลง: {title}"
-    )
-
-    audio_url = await get_audio_url(
-        webpage_url
-    )
-
-except Exception as e:
-
-    print("=" * 60)
-    print("❌ GET AUDIO ERROR")
-    print(
-        f"ประเภท: {type(e).__name__}"
-    )
-    print(
-        f"รายละเอียด: {e}"
-    )
-    print("=" * 60)
-
-    await ctx.send(
-        "❌ ไม่สามารถดึงเสียงเพลงได้ครับ\n"
-        f"`{type(e).__name__}: {e}`"
-    )
-
-    current_song = None
-
-    # ลองเพลงถัดไป
-    await play_next(ctx)
-
-    return
-
-# ----------------------------------------------
-# FFmpeg
-# ----------------------------------------------
-
-try:
-
-    source = discord.FFmpegPCMAudio(
-        audio_url,
-        executable="ffmpeg",
-        **FFMPEG_OPTIONS
-    )
-
-except Exception as e:
-
-    print("=" * 60)
-    print("❌ FFMPEG ERROR")
-    print(
-        f"ประเภท: {type(e).__name__}"
-    )
-    print(
-        f"รายละเอียด: {e}"
-    )
-    print("=" * 60)
-
-    await ctx.send(
-        "❌ เปิดเสียงเพลงไม่ได้ครับ\n"
-        f"`{type(e).__name__}: {e}`"
-    )
-
-    current_song = None
-
-    return
-
-# ----------------------------------------------
-# เพลงเล่นจบ
-# ----------------------------------------------
-
-def after_playing(error):
-
-    if error:
-
-        print(
-            f"❌ Audio Error: {error}"
+        await ctx.send(
+            "📭 เพลงในคิวหมดแล้วครับ"
         )
 
-    asyncio.run_coroutine_threadsafe(
-        play_next(ctx),
-        bot.loop
-    )
+        return
 
-# ----------------------------------------------
-# เล่นเพลง
-# ----------------------------------------------
+    # ------------------------------------------------
+    # เอาเพลงจาก Queue
+    # ------------------------------------------------
 
-try:
+    current_song = music_queue.pop(0)
 
-    voice.play(
-        source,
-        after=after_playing
-    )
+    title = current_song["title"]
+    audio_url = current_song["url"]
 
-except Exception as e:
-
-    print("=" * 60)
-    print("❌ VOICE PLAY ERROR")
-    print(
-        f"ประเภท: {type(e).__name__}"
-    )
-    print(
-        f"รายละเอียด: {e}"
-    )
-    print("=" * 60)
-
-    await ctx.send(
-        "❌ เล่นเพลงไม่ได้ครับ\n"
-        f"`{type(e).__name__}: {e}`"
-    )
-
-    current_song = None
-
-    return
-
-await ctx.send(
-    f"🎵 กำลังเล่น **{title}**"
-)
-```
-
-# ==================================================
-
-# Bot Online
-
-# ==================================================
-
-@bot.event
-async def on_ready():
-
-```
-print("=" * 60)
-
-print(
-    f"✅ Login สำเร็จ: {bot.user}"
-)
-
-print(
-    f"🆔 Bot ID: {bot.user.id}"
-)
-
-print(
-    "📋 คำสั่งที่ Bot มี:"
-)
-
-for command in bot.commands:
-
-    print(
-        f"   !{command.name}"
-    )
-
-print("=" * 60)
-```
-
-# ==================================================
-
-# !ping
-
-# ==================================================
-
-@bot.command()
-async def ping(ctx):
-
-```
-await ctx.send(
-    "🏓 Pong!"
-)
-```
-
-# ==================================================
-
-# !join
-
-# ==================================================
-
-@bot.command()
-async def join(ctx):
-
-```
-if ctx.author.voice is None:
-
-    await ctx.send(
-        "❌ ป๊อปต้องเข้าห้องพูดก่อนครับ"
-    )
-
-    return
-
-channel = ctx.author.voice.channel
-
-try:
-
-    if ctx.voice_client:
-
-        await ctx.voice_client.move_to(
-            channel
-        )
-
-    else:
-
-        await channel.connect()
-
-    await ctx.send(
-        f"🎤 DJ Pop เข้าห้อง "
-        f"**{channel.name}** แล้วครับ!"
-    )
-
-except Exception as e:
-
-    print(
-        f"❌ Join Error: "
-        f"{type(e).__name__}: {e}"
-    )
-
-    await ctx.send(
-        "❌ Bot เข้าห้องไม่ได้ครับ\n"
-        f"`{type(e).__name__}: {e}`"
-    )
-```
-
-# ==================================================
-
-# !play
-
-# ==================================================
-
-@bot.command()
-async def play(ctx, *, search):
-
-```
-# ----------------------------------------------
-# ตรวจ Voice
-# ----------------------------------------------
-
-if ctx.author.voice is None:
-
-    await ctx.send(
-        "❌ ป๊อปต้องเข้าห้องพูดก่อนครับ"
-    )
-
-    return
-
-# ----------------------------------------------
-# Connect Voice
-# ----------------------------------------------
-
-if ctx.voice_client is None:
+    # ------------------------------------------------
+    # FFmpeg
+    # ------------------------------------------------
 
     try:
 
-        await ctx.author.voice.channel.connect()
+        source = discord.FFmpegPCMAudio(
+            audio_url,
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
+        )
 
     except Exception as e:
 
+        print("=" * 60)
+        print("❌ FFMPEG ERROR")
+        print(f"ประเภท: {type(e).__name__}")
+        print(f"รายละเอียด: {e}")
+        print("=" * 60)
+
         await ctx.send(
-            "❌ Bot เข้า Voice ไม่ได้ครับ\n"
+            f"❌ เปิดเสียงเพลงไม่ได้ครับ\n"
+            f"`{type(e).__name__}: {e}`"
+        )
+
+        current_song = None
+
+        return
+
+    # ------------------------------------------------
+    # เพลงเล่นจบ
+    # ------------------------------------------------
+
+    def after_playing(error):
+
+        if error:
+
+            print(
+                f"❌ Audio Error: {error}"
+            )
+
+        asyncio.run_coroutine_threadsafe(
+            play_next(ctx),
+            bot.loop
+        )
+
+    # ------------------------------------------------
+    # เริ่มเล่น
+    # ------------------------------------------------
+
+    try:
+
+        voice.play(
+            source,
+            after=after_playing
+        )
+
+    except Exception as e:
+
+        print("=" * 60)
+        print("❌ VOICE PLAY ERROR")
+        print(f"ประเภท: {type(e).__name__}")
+        print(f"รายละเอียด: {e}")
+        print("=" * 60)
+
+        await ctx.send(
+            f"❌ เล่นเพลงไม่ได้ครับ\n"
             f"`{type(e).__name__}: {e}`"
         )
 
         return
 
-voice = ctx.voice_client
-
-# ----------------------------------------------
-# กำลังค้นหา
-# ----------------------------------------------
-
-message = await ctx.send(
-    f"🔎 กำลังค้นหา **{search}** ..."
-)
-
-try:
-
-    song = await search_song(
-        search
+    await ctx.send(
+        f"🎵 กำลังเล่น **{title}**"
     )
 
-    # ------------------------------------------
-    # ไม่พบเพลง
-    # ------------------------------------------
 
-    if song is None:
+# ==================================================
+# Bot Online
+# ==================================================
 
-        await message.edit(
-            content="❌ หาเพลงไม่เจอครับ"
+@bot.event
+async def on_ready():
+
+    print("=" * 60)
+
+    print(
+        f"✅ Login สำเร็จ: {bot.user}"
+    )
+
+    print(
+        f"🆔 Bot ID: {bot.user.id}"
+    )
+
+    print(
+        "📋 คำสั่งที่ Bot มี:"
+    )
+
+    for command in bot.commands:
+
+        print(
+            f"   !{command.name}"
+        )
+
+    print("=" * 60)
+
+
+# ==================================================
+# !ping
+# ==================================================
+
+@bot.command()
+async def ping(ctx):
+
+    await ctx.send(
+        "🏓 Pong!"
+    )
+
+
+# ==================================================
+# !join
+# ==================================================
+
+@bot.command()
+async def join(ctx):
+
+    if ctx.author.voice is None:
+
+        await ctx.send(
+            "❌ ป๊อปต้องเข้าห้องพูดก่อนครับ"
         )
 
         return
 
-    # ------------------------------------------
-    # มีเพลงเล่นอยู่
-    # ------------------------------------------
+    channel = ctx.author.voice.channel
+
+    try:
+
+        if ctx.voice_client:
+
+            await ctx.voice_client.move_to(
+                channel
+            )
+
+        else:
+
+            await channel.connect()
+
+        await ctx.send(
+            f"🎤 DJ Pop เข้าห้อง "
+            f"**{channel.name}** แล้วครับ!"
+        )
+
+    except Exception as e:
+
+        print(
+            f"❌ Join Error: "
+            f"{type(e).__name__}: {e}"
+        )
+
+        await ctx.send(
+            f"❌ Bot เข้าห้องไม่ได้ครับ\n"
+            f"`{type(e).__name__}: {e}`"
+        )
+
+
+# ==================================================
+# !play
+# ==================================================
+
+@bot.command()
+async def play(ctx, *, search):
+
+    # ------------------------------------------------
+    # ตรวจ Voice
+    # ------------------------------------------------
+
+    if ctx.author.voice is None:
+
+        await ctx.send(
+            "❌ ป๊อปต้องเข้าห้องพูดก่อนครับ"
+        )
+
+        return
+
+    # ------------------------------------------------
+    # Connect Voice
+    # ------------------------------------------------
+
+    if ctx.voice_client is None:
+
+        try:
+
+            await ctx.author.voice.channel.connect()
+
+        except Exception as e:
+
+            await ctx.send(
+                f"❌ Bot เข้า Voice ไม่ได้ครับ\n"
+                f"`{type(e).__name__}: {e}`"
+            )
+
+            return
+
+    voice = ctx.voice_client
+
+    # ------------------------------------------------
+    # กำลังค้นหา
+    # ------------------------------------------------
+
+    message = await ctx.send(
+        f"🔎 กำลังค้นหา **{search}** ..."
+    )
+
+    try:
+
+        song = await search_song(search)
+
+        # --------------------------------------------
+        # ไม่พบเพลง
+        # --------------------------------------------
+
+        if song is None:
+
+            await message.edit(
+                content="❌ หาเพลงไม่เจอครับ"
+            )
+
+            return
+
+        # --------------------------------------------
+        # มีเพลงกำลังเล่น
+        # --------------------------------------------
+
+        if (
+            voice.is_playing()
+            or voice.is_paused()
+        ):
+
+            music_queue.append(song)
+
+            await message.edit(
+                content=(
+                    f"📋 เพิ่มเข้าคิวแล้ว\n"
+                    f"🎵 **{song['title']}**\n"
+                    f"ลำดับที่ "
+                    f"**{len(music_queue)}**"
+                )
+            )
+
+            return
+
+        # --------------------------------------------
+        # ไม่มีเพลงเล่น
+        # --------------------------------------------
+
+        music_queue.append(song)
+
+        await message.delete()
+
+        await play_next(ctx)
+
+    except Exception as e:
+
+        print("=" * 60)
+
+        print(
+            "❌ PLAY ERROR"
+        )
+
+        print(
+            f"ประเภท: {type(e).__name__}"
+        )
+
+        print(
+            f"รายละเอียด: {e}"
+        )
+
+        print("=" * 60)
+
+        try:
+
+            await message.edit(
+                content=(
+                    "❌ เล่นเพลงไม่ได้ครับ\n"
+                    f"`{type(e).__name__}: {e}`"
+                )
+            )
+
+        except Exception:
+            pass
+
+
+# ==================================================
+# !skip
+# ==================================================
+
+@bot.command()
+async def skip(ctx):
+
+    voice = ctx.voice_client
+
+    if voice is None:
+
+        await ctx.send(
+            "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
+        )
+
+        return
+
+    if not voice.is_playing():
+
+        await ctx.send(
+            "❌ ตอนนี้ไม่มีเพลงกำลังเล่นครับ"
+        )
+
+        return
+
+    voice.stop()
+
+    await ctx.send(
+        "⏭️ ข้ามเพลงแล้วครับ"
+    )
+
+
+# ==================================================
+# !pause
+# ==================================================
+
+@bot.command()
+async def pause(ctx):
+
+    voice = ctx.voice_client
+
+    if voice is None:
+
+        await ctx.send(
+            "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
+        )
+
+        return
+
+    if voice.is_playing():
+
+        voice.pause()
+
+        await ctx.send(
+            "⏸️ พักเพลงแล้วครับ"
+        )
+
+    else:
+
+        await ctx.send(
+            "❌ ตอนนี้ไม่มีเพลงกำลังเล่นครับ"
+        )
+
+
+# ==================================================
+# !resume
+# ==================================================
+
+@bot.command()
+async def resume(ctx):
+
+    voice = ctx.voice_client
+
+    if voice is None:
+
+        await ctx.send(
+            "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
+        )
+
+        return
+
+    if voice.is_paused():
+
+        voice.resume()
+
+        await ctx.send(
+            "▶️ เล่นเพลงต่อแล้วครับ"
+        )
+
+    else:
+
+        await ctx.send(
+            "❌ เพลงไม่ได้อยู่ในสถานะพักครับ"
+        )
+
+
+# ==================================================
+# !queue
+# ==================================================
+
+@bot.command()
+async def queue(ctx):
+
+    if not music_queue:
+
+        await ctx.send(
+            "📭 ตอนนี้ไม่มีเพลงในคิวครับ"
+        )
+
+        return
+
+    text = "📋 **คิวเพลง**\n\n"
+
+    for index, song in enumerate(
+        music_queue,
+        start=1
+    ):
+
+        text += (
+            f"**{index}.** "
+            f"{song['title']}\n"
+        )
+
+    await ctx.send(text)
+
+
+# ==================================================
+# !nowplaying
+# ==================================================
+
+@bot.command()
+async def nowplaying(ctx):
+
+    if current_song is None:
+
+        await ctx.send(
+            "📭 ตอนนี้ไม่มีเพลงกำลังเล่นครับ"
+        )
+
+        return
+
+    await ctx.send(
+        f"🎵 **กำลังเล่น**\n"
+        f"{current_song['title']}"
+    )
+
+
+# ==================================================
+# !stop
+# ==================================================
+
+@bot.command()
+async def stop(ctx):
+
+    global current_song
+
+    voice = ctx.voice_client
+
+    if voice is None:
+
+        await ctx.send(
+            "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
+        )
+
+        return
+
+    music_queue.clear()
+
+    current_song = None
 
     if (
         voice.is_playing()
         or voice.is_paused()
     ):
 
-        music_queue.append(
-            song
-        )
-
-        await message.edit(
-            content=(
-                f"📋 เพิ่มเข้าคิวแล้ว\n"
-                f"🎵 **{song['title']}**\n"
-                f"ลำดับที่ "
-                f"**{len(music_queue)}**"
-            )
-        )
-
-        return
-
-    # ------------------------------------------
-    # ไม่มีเพลงเล่น
-    # ------------------------------------------
-
-    music_queue.append(
-        song
-    )
-
-    await message.delete()
-
-    await play_next(ctx)
-
-except Exception as e:
-
-    print("=" * 60)
-
-    print(
-        "❌ PLAY ERROR"
-    )
-
-    print(
-        f"ประเภท: {type(e).__name__}"
-    )
-
-    print(
-        f"รายละเอียด: {e}"
-    )
-
-    print("=" * 60)
-
-    try:
-
-        await message.edit(
-            content=(
-                "❌ เล่นเพลงไม่ได้ครับ\n"
-                f"`{type(e).__name__}: {e}`"
-            )
-        )
-
-    except Exception:
-        pass
-```
-
-# ==================================================
-
-# !skip
-
-# ==================================================
-
-@bot.command()
-async def skip(ctx):
-
-```
-voice = ctx.voice_client
-
-if voice is None:
+        voice.stop()
 
     await ctx.send(
-        "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
+        "⏹️ หยุดเพลงและล้างคิวแล้วครับ"
     )
 
-    return
-
-if not voice.is_playing():
-
-    await ctx.send(
-        "❌ ตอนนี้ไม่มีเพลงกำลังเล่นครับ"
-    )
-
-    return
-
-voice.stop()
-
-await ctx.send(
-    "⏭️ ข้ามเพลงแล้วครับ"
-)
-```
 
 # ==================================================
-
-# !pause
-
-# ==================================================
-
-@bot.command()
-async def pause(ctx):
-
-```
-voice = ctx.voice_client
-
-if voice is None:
-
-    await ctx.send(
-        "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
-    )
-
-    return
-
-if voice.is_playing():
-
-    voice.pause()
-
-    await ctx.send(
-        "⏸️ พักเพลงแล้วครับ"
-    )
-
-else:
-
-    await ctx.send(
-        "❌ ตอนนี้ไม่มีเพลงกำลังเล่นครับ"
-    )
-```
-
-# ==================================================
-
-# !resume
-
-# ==================================================
-
-@bot.command()
-async def resume(ctx):
-
-```
-voice = ctx.voice_client
-
-if voice is None:
-
-    await ctx.send(
-        "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
-    )
-
-    return
-
-if voice.is_paused():
-
-    voice.resume()
-
-    await ctx.send(
-        "▶️ เล่นเพลงต่อแล้วครับ"
-    )
-
-else:
-
-    await ctx.send(
-        "❌ เพลงไม่ได้อยู่ในสถานะพักครับ"
-    )
-```
-
-# ==================================================
-
-# !queue
-
-# ==================================================
-
-@bot.command()
-async def queue(ctx):
-
-```
-if not music_queue:
-
-    await ctx.send(
-        "📭 ตอนนี้ไม่มีเพลงในคิวครับ"
-    )
-
-    return
-
-text = "📋 **คิวเพลง**\n\n"
-
-for index, song in enumerate(
-    music_queue,
-    start=1
-):
-
-    text += (
-        f"**{index}.** "
-        f"{song['title']}\n"
-    )
-
-await ctx.send(
-    text
-)
-```
-
-# ==================================================
-
-# !nowplaying
-
-# ==================================================
-
-@bot.command()
-async def nowplaying(ctx):
-
-```
-if current_song is None:
-
-    await ctx.send(
-        "📭 ตอนนี้ไม่มีเพลงกำลังเล่นครับ"
-    )
-
-    return
-
-await ctx.send(
-    f"🎵 **กำลังเล่น**\n"
-    f"{current_song['title']}"
-)
-```
-
-# ==================================================
-
-# !stop
-
-# ==================================================
-
-@bot.command()
-async def stop(ctx):
-
-```
-global current_song
-
-voice = ctx.voice_client
-
-if voice is None:
-
-    await ctx.send(
-        "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
-    )
-
-    return
-
-music_queue.clear()
-
-current_song = None
-
-if (
-    voice.is_playing()
-    or voice.is_paused()
-):
-
-    voice.stop()
-
-await ctx.send(
-    "⏹️ หยุดเพลงและล้างคิวแล้วครับ"
-)
-```
-
-# ==================================================
-
 # !leave
-
 # ==================================================
 
 @bot.command()
 async def leave(ctx):
 
-```
-global current_song
+    global current_song
 
-if ctx.voice_client:
+    if ctx.voice_client:
 
-    music_queue.clear()
+        music_queue.clear()
 
-    current_song = None
+        current_song = None
 
-    await ctx.voice_client.disconnect()
+        await ctx.voice_client.disconnect()
 
-    await ctx.send(
-        "👋 DJ Pop ออกจากห้องแล้วครับ"
-    )
+        await ctx.send(
+            "👋 DJ Pop ออกจากห้องแล้วครับ"
+        )
 
-else:
+    else:
 
-    await ctx.send(
-        "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
-    )
-```
+        await ctx.send(
+            "❌ DJ Pop ไม่ได้อยู่ในห้องพูดครับ"
+        )
+
 
 # ==================================================
-
 # Command Error
-
 # ==================================================
 
 @bot.event
-async def on_command_error(
-ctx,
-error
-):
+async def on_command_error(ctx, error):
 
-```
-if isinstance(
-    error,
-    commands.CommandNotFound
-):
-    return
+    if isinstance(
+        error,
+        commands.CommandNotFound
+    ):
+        return
 
-print(
-    f"❌ Command Error: "
-    f"{type(error).__name__}: {error}"
-)
-```
+    print(
+        f"❌ Command Error: "
+        f"{type(error).__name__}: {error}"
+    )
+
 
 # ==================================================
-
 # Start Bot
-
 # ==================================================
 
 bot.run(TOKEN)
