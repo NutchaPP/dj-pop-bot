@@ -8,7 +8,7 @@ import yt_dlp
 
 
 # ==================================================
-# โหลด Token จาก Environment Variables
+# โหลด Token
 # ==================================================
 
 load_dotenv()
@@ -40,10 +40,15 @@ bot = commands.Bot(
 
 
 # ==================================================
-# Cookies
+# Path
 # ==================================================
 
-COOKIES_FILE = "/home/container/cookies.txt"
+BASE_DIR = "/home/container"
+
+COOKIES_FILE = os.path.join(
+    BASE_DIR,
+    "cookies.txt"
+)
 
 
 # ==================================================
@@ -51,19 +56,15 @@ COOKIES_FILE = "/home/container/cookies.txt"
 # ==================================================
 
 YTDL_OPTIONS = {
-    # เลือก audio ที่มีอยู่
-    "format": (
-        "bestaudio[ext=m4a]/"
-        "bestaudio[ext=webm]/"
-        "bestaudio/"
-        "best"
-    ),
+
+    # ไม่บังคับ ext / format ที่อาจไม่มี
+    "format": "bestaudio/best",
 
     "noplaylist": True,
 
     "quiet": True,
 
-    "no_warnings": True,
+    "no_warnings": False,
 
     "default_search": "ytsearch1",
 
@@ -73,11 +74,19 @@ YTDL_OPTIONS = {
 
     "nocheckcertificate": True,
 
-    # ใช้ cookies จาก Hosting
+    # ใช้ cookies.txt
     "cookiefile": COOKIES_FILE,
 
-    # ไม่บังคับ player_client
-    # ให้ yt-dlp เลือก client ที่เหมาะสมเอง
+    # Client ที่มีโอกาสใช้งานได้
+    "extractor_args": {
+        "youtube": {
+            "player_client": [
+                "web",
+                "android",
+                "ios"
+            ]
+        }
+    },
 }
 
 
@@ -86,6 +95,7 @@ YTDL_OPTIONS = {
 # ==================================================
 
 FFMPEG_OPTIONS = {
+
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
@@ -107,7 +117,7 @@ current_song = None
 
 
 # ==================================================
-# ตรวจสอบ Cookies
+# ตรวจ cookies.txt
 # ==================================================
 
 print("=" * 60)
@@ -126,7 +136,7 @@ print("=" * 60)
 
 
 # ==================================================
-# ค้นหาเพลง YouTube
+# ค้นหาเพลง
 # ==================================================
 
 async def search_song(search):
@@ -135,12 +145,79 @@ async def search_song(search):
 
     def extract():
 
-        with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
+        # --------------------------------------------------
+        # วิธีที่ 1
+        # --------------------------------------------------
 
-            return ydl.extract_info(
-                f"ytsearch1:{search}",
-                download=False
+        try:
+
+            options = YTDL_OPTIONS.copy()
+
+            with yt_dlp.YoutubeDL(options) as ydl:
+
+                print("=" * 60)
+                print(f"🔎 กำลังค้นหา: {search}")
+                print("=" * 60)
+
+                info = ydl.extract_info(
+                    f"ytsearch1:{search}",
+                    download=False
+                )
+
+                return info
+
+        except Exception as first_error:
+
+            print("=" * 60)
+            print("⚠️ วิธีค้นหาหลักไม่สำเร็จ")
+            print(
+                f"{type(first_error).__name__}: "
+                f"{first_error}"
             )
+            print("🔄 กำลังลอง fallback...")
+            print("=" * 60)
+
+            # --------------------------------------------------
+            # วิธีที่ 2 - ใช้ URL โดยตรงถ้าผู้ใช้ส่ง YouTube URL
+            # --------------------------------------------------
+
+            if search.startswith(
+                (
+                    "https://www.youtube.com/",
+                    "https://youtu.be/",
+                    "http://www.youtube.com/",
+                    "http://youtu.be/"
+                )
+            ):
+
+                fallback_options = {
+
+                    "format": "bestaudio/best",
+
+                    "noplaylist": True,
+
+                    "quiet": True,
+
+                    "no_warnings": False,
+
+                    "cookiefile": COOKIES_FILE,
+
+                    "source_address": "0.0.0.0",
+
+                    "nocheckcertificate": True,
+                }
+
+                with yt_dlp.YoutubeDL(
+                    fallback_options
+                ) as ydl:
+
+                    return ydl.extract_info(
+                        search,
+                        download=False
+                    )
+
+            raise first_error
+
 
     try:
 
@@ -149,9 +226,9 @@ async def search_song(search):
             extract
         )
 
-        if not info:
-
-            return None
+        # --------------------------------------------------
+        # Search Result
+        # --------------------------------------------------
 
         entries = info.get("entries")
 
@@ -161,20 +238,79 @@ async def search_song(search):
 
         song = entries[0]
 
+        # --------------------------------------------------
+        # ตรวจ URL
+        # --------------------------------------------------
+
+        audio_url = song.get("url")
+
+        if not audio_url:
+
+            # บางกรณี search result ยังไม่มี direct URL
+            webpage_url = song.get(
+                "webpage_url"
+            )
+
+            if webpage_url:
+
+                print(
+                    "🔄 กำลังดึงข้อมูลเพลงจาก URL..."
+                )
+
+                direct_options = {
+
+                    "format": "bestaudio/best",
+
+                    "noplaylist": True,
+
+                    "quiet": True,
+
+                    "cookiefile": COOKIES_FILE,
+
+                    "source_address": "0.0.0.0",
+
+                    "nocheckcertificate": True,
+                }
+
+                with yt_dlp.YoutubeDL(
+                    direct_options
+                ) as ydl:
+
+                    direct_info = ydl.extract_info(
+                        webpage_url,
+                        download=False
+                    )
+
+                    audio_url = direct_info.get(
+                        "url"
+                    )
+
+                    song = direct_info
+
+        if not audio_url:
+
+            raise RuntimeError(
+                "ไม่พบ Audio URL จาก YouTube"
+            )
+
+        # --------------------------------------------------
+        # คืนข้อมูลเพลง
+        # --------------------------------------------------
+
         return {
+
             "title": song.get(
                 "title",
                 search
             ),
 
-            "url": song.get(
-                "url"
-            ),
+            "url": audio_url,
 
             "webpage_url": song.get(
                 "webpage_url"
             ),
         }
+
 
     except Exception as e:
 
@@ -204,7 +340,6 @@ async def play_next(ctx):
     if voice is None:
         return
 
-
     # ------------------------------------------------
     # Queue หมด
     # ------------------------------------------------
@@ -219,7 +354,6 @@ async def play_next(ctx):
 
         return
 
-
     # ------------------------------------------------
     # เอาเพลงออกจาก Queue
     # ------------------------------------------------
@@ -230,24 +364,6 @@ async def play_next(ctx):
 
     audio_url = current_song["url"]
 
-
-    # ------------------------------------------------
-    # ตรวจ URL
-    # ------------------------------------------------
-
-    if not audio_url:
-
-        await ctx.send(
-            "❌ ไม่พบ Audio URL ของเพลงครับ"
-        )
-
-        current_song = None
-
-        await play_next(ctx)
-
-        return
-
-
     # ------------------------------------------------
     # FFmpeg
     # ------------------------------------------------
@@ -255,8 +371,11 @@ async def play_next(ctx):
     try:
 
         source = discord.FFmpegPCMAudio(
+
             audio_url,
+
             executable="ffmpeg",
+
             **FFMPEG_OPTIONS
         )
 
@@ -281,9 +400,8 @@ async def play_next(ctx):
 
         return
 
-
     # ------------------------------------------------
-    # Callback เมื่อเพลงจบ
+    # เพลงเล่นจบ
     # ------------------------------------------------
 
     def after_playing(error):
@@ -299,9 +417,8 @@ async def play_next(ctx):
             bot.loop
         )
 
-
     # ------------------------------------------------
-    # เล่นเพลง
+    # เริ่มเล่น
     # ------------------------------------------------
 
     try:
@@ -331,7 +448,6 @@ async def play_next(ctx):
         current_song = None
 
         return
-
 
     await ctx.send(
         f"🎵 กำลังเล่น **{title}**"
@@ -395,9 +511,7 @@ async def join(ctx):
 
         return
 
-
     channel = ctx.author.voice.channel
-
 
     try:
 
@@ -411,12 +525,10 @@ async def join(ctx):
 
             await channel.connect()
 
-
         await ctx.send(
             f"🎤 DJ Pop เข้าห้อง "
             f"**{channel.name}** แล้วครับ!"
         )
-
 
     except Exception as e:
 
@@ -429,7 +541,6 @@ async def join(ctx):
             f"รายละเอียด: {e}"
         )
         print("=" * 60)
-
 
         await ctx.send(
             "❌ Bot เข้าห้องไม่ได้ครับ\n"
@@ -456,7 +567,6 @@ async def play(ctx, *, search):
 
         return
 
-
     # ------------------------------------------------
     # Connect Voice
     # ------------------------------------------------
@@ -476,9 +586,7 @@ async def play(ctx, *, search):
 
             return
 
-
     voice = ctx.voice_client
-
 
     # ------------------------------------------------
     # กำลังค้นหา
@@ -488,11 +596,9 @@ async def play(ctx, *, search):
         f"🔎 กำลังค้นหา **{search}** ..."
     )
 
-
     try:
 
         song = await search_song(search)
-
 
         # --------------------------------------------
         # ไม่พบเพลง
@@ -505,7 +611,6 @@ async def play(ctx, *, search):
             )
 
             return
-
 
         # --------------------------------------------
         # มีเพลงกำลังเล่น
@@ -529,33 +634,33 @@ async def play(ctx, *, search):
 
             return
 
-
         # --------------------------------------------
         # ไม่มีเพลงเล่น
         # --------------------------------------------
 
         music_queue.append(song)
 
-        await message.delete()
+        try:
+
+            await message.delete()
+
+        except Exception:
+
+            pass
 
         await play_next(ctx)
-
 
     except Exception as e:
 
         print("=" * 60)
         print("❌ PLAY ERROR")
-
         print(
             f"ประเภท: {type(e).__name__}"
         )
-
         print(
             f"รายละเอียด: {e}"
         )
-
         print("=" * 60)
-
 
         try:
 
@@ -580,7 +685,6 @@ async def skip(ctx):
 
     voice = ctx.voice_client
 
-
     if voice is None:
 
         await ctx.send(
@@ -588,7 +692,6 @@ async def skip(ctx):
         )
 
         return
-
 
     if not voice.is_playing():
 
@@ -598,9 +701,7 @@ async def skip(ctx):
 
         return
 
-
     voice.stop()
-
 
     await ctx.send(
         "⏭️ ข้ามเพลงแล้วครับ"
@@ -616,7 +717,6 @@ async def pause(ctx):
 
     voice = ctx.voice_client
 
-
     if voice is None:
 
         await ctx.send(
@@ -624,7 +724,6 @@ async def pause(ctx):
         )
 
         return
-
 
     if voice.is_playing():
 
@@ -650,7 +749,6 @@ async def resume(ctx):
 
     voice = ctx.voice_client
 
-
     if voice is None:
 
         await ctx.send(
@@ -658,7 +756,6 @@ async def resume(ctx):
         )
 
         return
-
 
     if voice.is_paused():
 
@@ -690,9 +787,7 @@ async def queue(ctx):
 
         return
 
-
     text = "📋 **คิวเพลง**\n\n"
-
 
     for index, song in enumerate(
         music_queue,
@@ -703,7 +798,6 @@ async def queue(ctx):
             f"**{index}.** "
             f"{song['title']}\n"
         )
-
 
     await ctx.send(text)
 
@@ -723,7 +817,6 @@ async def nowplaying(ctx):
 
         return
 
-
     await ctx.send(
         "🎵 **กำลังเล่น**\n"
         f"{current_song['title']}"
@@ -739,9 +832,7 @@ async def stop(ctx):
 
     global current_song
 
-
     voice = ctx.voice_client
-
 
     if voice is None:
 
@@ -751,11 +842,9 @@ async def stop(ctx):
 
         return
 
-
     music_queue.clear()
 
     current_song = None
-
 
     if (
         voice.is_playing()
@@ -763,7 +852,6 @@ async def stop(ctx):
     ):
 
         voice.stop()
-
 
     await ctx.send(
         "⏹️ หยุดเพลงและล้างคิวแล้วครับ"
@@ -779,7 +867,6 @@ async def leave(ctx):
 
     global current_song
 
-
     if ctx.voice_client:
 
         music_queue.clear()
@@ -788,11 +875,9 @@ async def leave(ctx):
 
         await ctx.voice_client.disconnect()
 
-
         await ctx.send(
             "👋 DJ Pop ออกจากห้องแล้วครับ"
         )
-
 
     else:
 
@@ -815,19 +900,14 @@ async def on_command_error(ctx, error):
 
         return
 
-
     print("=" * 60)
-
     print("❌ COMMAND ERROR")
-
     print(
         f"ประเภท: {type(error).__name__}"
     )
-
     print(
         f"รายละเอียด: {error}"
     )
-
     print("=" * 60)
 
 
