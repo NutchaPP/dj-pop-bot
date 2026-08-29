@@ -45,9 +45,6 @@ bot = commands.Bot(
 # Path
 # ==================================================
 
-# ใช้โฟลเดอร์เดียวกับ bot.py
-# ทำให้ใช้ได้ทั้ง Local และ Hosting
-
 BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
@@ -64,138 +61,205 @@ COOKIES_FILE = os.path.join(
 
 
 # ==================================================
-# Deno
+# JavaScript Runtime
 # ==================================================
 
-def find_deno():
+def find_runtime():
 
     """
-    ค้นหา Deno ในตำแหน่งต่าง ๆ
+    ค้นหา JavaScript runtime สำหรับ yt-dlp
 
-    รองรับ:
-    1. deno ที่อยู่ใน PATH
-    2. /home/container/deno
-    3. ./deno
-    4. ./bin/deno
+    ลำดับ:
+    1. Deno
+    2. Node.js
+    3. Bun
+
+    รองรับทั้ง PATH และตำแหน่งทั่วไป
     """
 
     # ------------------------------------------------
-    # 1. PATH
+    # Deno
     # ------------------------------------------------
 
     deno_path = shutil.which("deno")
 
     if deno_path:
-        return deno_path
+        return "deno", deno_path
 
-    # ------------------------------------------------
-    # 2. ตำแหน่งที่ Hosting นิยมใช้
-    # ------------------------------------------------
-
-    possible_paths = [
-
-        os.path.join(
-            BASE_DIR,
-            "deno"
-        ),
-
-        os.path.join(
-            BASE_DIR,
-            "bin",
-            "deno"
-        ),
-
+    deno_paths = [
+        os.path.join(BASE_DIR, "deno"),
+        os.path.join(BASE_DIR, "bin", "deno"),
         "/home/container/deno",
-
         "/home/container/bin/deno",
-
         "/usr/local/bin/deno",
-
         "/usr/bin/deno",
-
+        os.path.expanduser("~/.deno/bin/deno"),
     ]
 
-    for path in possible_paths:
+    for path in deno_paths:
 
         if os.path.isfile(path):
+            return "deno", path
 
-            return path
+    # ------------------------------------------------
+    # Node.js
+    # ------------------------------------------------
 
-    return None
+    node_path = shutil.which("node")
+
+    if node_path:
+        return "node", node_path
+
+    node_paths = [
+        os.path.join(BASE_DIR, "node"),
+        os.path.join(BASE_DIR, "bin", "node"),
+        "/usr/local/bin/node",
+        "/usr/bin/node",
+    ]
+
+    for path in node_paths:
+
+        if os.path.isfile(path):
+            return "node", path
+
+    # ------------------------------------------------
+    # Bun
+    # ------------------------------------------------
+
+    bun_path = shutil.which("bun")
+
+    if bun_path:
+        return "bun", bun_path
+
+    bun_paths = [
+        os.path.join(BASE_DIR, "bun"),
+        os.path.join(BASE_DIR, "bin", "bun"),
+        "/usr/local/bin/bun",
+        "/usr/bin/bun",
+    ]
+
+    for path in bun_paths:
+
+        if os.path.isfile(path):
+            return "bun", path
+
+    return None, None
 
 
 # ==================================================
-# ตรวจสอบ Deno
+# ตรวจสอบ JavaScript Runtime
 # ==================================================
 
-DENO_PATH = find_deno()
+RUNTIME_NAME, RUNTIME_PATH = find_runtime()
 
 
 # ==================================================
-# แสดงข้อมูล Deno
+# แสดงข้อมูล Runtime
 # ==================================================
 
-def print_deno_status():
+def print_runtime_status():
 
     print("=" * 60)
+    print("🧩 JavaScript Runtime")
+    print("=" * 60)
 
-    if DENO_PATH:
+    if not RUNTIME_PATH:
 
-        print("🦕 พบ Deno")
-        print(
-            f"📁 Path: {DENO_PATH}"
+        print("❌ ไม่พบ JavaScript Runtime")
+
+        print()
+        print("⚠️ yt-dlp อาจไม่สามารถผ่าน")
+        print("   YouTube EJS challenge ได้")
+
+        print()
+        print("Runtime ที่รองรับ:")
+        print("   🦕 Deno")
+        print("   🟢 Node.js")
+        print("   🟠 Bun")
+
+        print("=" * 60)
+
+        return
+
+    emoji = {
+        "deno": "🦕",
+        "node": "🟢",
+        "bun": "🟠"
+    }.get(
+        RUNTIME_NAME,
+        "🧩"
+    )
+
+    print(
+        f"{emoji} พบ {RUNTIME_NAME.upper()}"
+    )
+
+    print(
+        f"📁 Path: {RUNTIME_PATH}"
+    )
+
+    try:
+
+        if RUNTIME_NAME == "deno":
+
+            command = [
+                RUNTIME_PATH,
+                "--version"
+            ]
+
+        elif RUNTIME_NAME == "node":
+
+            command = [
+                RUNTIME_PATH,
+                "--version"
+            ]
+
+        elif RUNTIME_NAME == "bun":
+
+            command = [
+                RUNTIME_PATH,
+                "--version"
+            ]
+
+        else:
+
+            command = [
+                RUNTIME_PATH,
+                "--version"
+            ]
+
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            timeout=10
         )
 
-        try:
+        if result.returncode == 0:
 
-            result = subprocess.run(
-                [
-                    DENO_PATH,
-                    "--version"
-                ],
-                capture_output=True,
-                text=True,
-                timeout=10
+            version = (
+                result.stdout.strip()
+                or result.stderr.strip()
             )
-
-            if result.returncode == 0:
-
-                version = result.stdout.strip()
-
-                print(
-                    f"📦 Version:\n{version}"
-                )
-
-            else:
-
-                print(
-                    "⚠️ ไม่สามารถอ่าน Version ของ Deno ได้"
-                )
-
-        except Exception as e:
 
             print(
-                "⚠️ ตรวจสอบ Version Deno ไม่สำเร็จ"
+                f"📦 Version:\n{version}"
             )
+
+        else:
 
             print(
-                f"{type(e).__name__}: {e}"
+                "⚠️ ไม่สามารถอ่าน Version ได้"
             )
 
-    else:
-
-        print("❌ ไม่พบ Deno")
+    except Exception as e:
 
         print(
-            "⚠️ YouTube EJS challenge อาจทำงานไม่ได้"
+            "⚠️ ตรวจสอบ Runtime ไม่สำเร็จ"
         )
 
         print(
-            "📌 ต้องติดตั้ง Deno แล้ววาง executable"
-        )
-
-        print(
-            "   ไว้ใน PATH หรือโฟลเดอร์เดียวกับ bot.py"
+            f"{type(e).__name__}: {e}"
         )
 
     print("=" * 60)
@@ -208,11 +272,12 @@ def print_deno_status():
 YTDL_OPTIONS = {
 
     # ------------------------------------------------
-    # Audio
+    # Audio Format
     # ------------------------------------------------
 
     "format": (
         "bestaudio[ext=m4a]/"
+        "bestaudio[ext=webm]/"
         "bestaudio/"
         "best"
     ),
@@ -254,12 +319,7 @@ YTDL_OPTIONS = {
     "cookiefile": COOKIES_FILE,
 
     # ------------------------------------------------
-    # YouTube Client
-    #
-    # ห้ามใช้ android เพราะ android client
-    # ไม่รองรับ cookies
-    #
-    # ใช้ web ซึ่งรองรับ cookies
+    # YouTube
     # ------------------------------------------------
 
     "extractor_args": {
@@ -278,15 +338,13 @@ YTDL_OPTIONS = {
 
 
 # ==================================================
-# เพิ่ม Deno ให้ yt-dlp
+# เพิ่ม JavaScript Runtime ให้ yt-dlp
 # ==================================================
 
-if DENO_PATH:
+if RUNTIME_PATH:
 
     YTDL_OPTIONS["js_runtimes"] = {
-
-        "deno": DENO_PATH
-
+        RUNTIME_NAME: RUNTIME_PATH
     }
 
 
@@ -318,7 +376,7 @@ current_song = None
 
 
 # ==================================================
-# ตรวจสอบไฟล์ Cookies
+# Cookies Status
 # ==================================================
 
 print("=" * 60)
@@ -433,7 +491,6 @@ async def search_song(search):
         )
 
         if not info:
-
             return None
 
         entries = info.get(
@@ -441,13 +498,11 @@ async def search_song(search):
         )
 
         if not entries:
-
             return None
 
         song = entries[0]
 
         if not song:
-
             return None
 
         # ------------------------------------------------
@@ -468,8 +523,8 @@ async def search_song(search):
         )
 
         # ------------------------------------------------
-        # บางกรณี search result
-        # อาจยังไม่มี direct audio URL
+        # ถ้า Search Result ไม่มี Audio URL
+        # ให้ Extract จาก Video โดยตรง
         # ------------------------------------------------
 
         if not audio_url and webpage_url:
@@ -479,6 +534,11 @@ async def search_song(search):
             )
 
             direct_options = YTDL_OPTIONS.copy()
+
+            direct_options.pop(
+                "default_search",
+                None
+            )
 
             with yt_dlp.YoutubeDL(
                 direct_options
@@ -501,7 +561,7 @@ async def search_song(search):
                     )
 
         # ------------------------------------------------
-        # ตรวจสอบ Audio URL
+        # ตรวจ Audio URL
         # ------------------------------------------------
 
         if not audio_url:
@@ -566,7 +626,6 @@ async def play_next(ctx):
     voice = ctx.voice_client
 
     if voice is None:
-
         return
 
     # ------------------------------------------------
@@ -747,10 +806,10 @@ async def on_ready():
         )
 
     # ------------------------------------------------
-    # Deno
+    # JavaScript Runtime
     # ------------------------------------------------
 
-    print_deno_status()
+    print_runtime_status()
 
     # ------------------------------------------------
     # FFmpeg
@@ -933,9 +992,7 @@ async def play(ctx, *, search):
 
             pass
 
-        await play_next(
-            ctx
-        )
+        await play_next(ctx)
 
     except Exception as e:
 
