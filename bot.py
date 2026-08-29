@@ -16,7 +16,9 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-    raise ValueError("ไม่พบ DISCORD_TOKEN ใน Environment Variables")
+    raise ValueError(
+        "ไม่พบ DISCORD_TOKEN ใน Environment Variables"
+    )
 
 
 # ==================================================
@@ -38,17 +40,24 @@ bot = commands.Bot(
 
 
 # ==================================================
-# yt-dlp
+# yt-dlp OPTIONS
 # ==================================================
 
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-COOKIES_FILE = os.path.join(BASE_DIR, "cookies.txt")
+BASE_DIR = "/home/container"
+
+COOKIES_FILE = os.path.join(
+    BASE_DIR,
+    "cookies.txt"
+)
 
 YTDL_OPTIONS = {
     "format": "bestaudio/best",
+
     "noplaylist": True,
-    "quiet": False,
-    "no_warnings": False,
+
+    "quiet": True,
+
+    "no_warnings": True,
 
     "default_search": "ytsearch1",
 
@@ -58,8 +67,15 @@ YTDL_OPTIONS = {
 
     "nocheckcertificate": True,
 
+    # ----------------------------------------------
     # ใช้ cookies.txt ถ้ามี
+    # ----------------------------------------------
+
     "cookiefile": COOKIES_FILE,
+
+    # ----------------------------------------------
+    # YouTube player clients
+    # ----------------------------------------------
 
     "extractor_args": {
         "youtube": {
@@ -74,7 +90,7 @@ YTDL_OPTIONS = {
 
 
 # ==================================================
-# FFmpeg
+# FFmpeg OPTIONS
 # ==================================================
 
 FFMPEG_OPTIONS = {
@@ -84,6 +100,7 @@ FFMPEG_OPTIONS = {
         "-reconnect_delay_max 5 "
         "-nostdin"
     ),
+
     "options": "-vn",
 }
 
@@ -93,22 +110,31 @@ FFMPEG_OPTIONS = {
 # ==================================================
 
 music_queue = []
+
 current_song = None
 
 
 # ==================================================
-# ตรวจ cookies.txt
+# ตรวจสอบ cookies.txt
 # ==================================================
 
 if os.path.exists(COOKIES_FILE):
-    print("✅ พบ cookies.txt แล้ว")
+
+    print("=" * 60)
+    print("✅ พบ cookies.txt")
+    print(f"📁 ตำแหน่ง: {COOKIES_FILE}")
+    print("=" * 60)
+
 else:
+
+    print("=" * 60)
     print("⚠️ ไม่พบ cookies.txt")
-    print(f"ตำแหน่งที่ต้องการ: {COOKIES_FILE}")
+    print(f"📁 ตำแหน่งที่ต้องการ: {COOKIES_FILE}")
+    print("=" * 60)
 
 
 # ==================================================
-# ค้นหาเพลง
+# ค้นหาเพลง YouTube
 # ==================================================
 
 async def search_song(search):
@@ -144,7 +170,9 @@ async def search_song(search):
                 search
             ),
 
-            "url": song.get("url"),
+            "url": song.get(
+                "url"
+            ),
 
             "webpage_url": song.get(
                 "webpage_url"
@@ -155,8 +183,12 @@ async def search_song(search):
 
         print("=" * 60)
         print("❌ YOUTUBE SEARCH ERROR")
-        print(f"ประเภท: {type(e).__name__}")
-        print(f"รายละเอียด: {e}")
+        print(
+            f"ประเภท: {type(e).__name__}"
+        )
+        print(
+            f"รายละเอียด: {e}"
+        )
         print("=" * 60)
 
         raise
@@ -190,16 +222,17 @@ async def play_next(ctx):
         return
 
     # ------------------------------------------------
-    # เอาเพลงจาก Queue
+    # เอาเพลงออกจาก Queue
     # ------------------------------------------------
 
     current_song = music_queue.pop(0)
 
     title = current_song["title"]
+
     audio_url = current_song["url"]
 
     # ------------------------------------------------
-    # FFmpeg
+    # สร้าง FFmpeg Source
     # ------------------------------------------------
 
     try:
@@ -214,12 +247,16 @@ async def play_next(ctx):
 
         print("=" * 60)
         print("❌ FFMPEG ERROR")
-        print(f"ประเภท: {type(e).__name__}")
-        print(f"รายละเอียด: {e}")
+        print(
+            f"ประเภท: {type(e).__name__}"
+        )
+        print(
+            f"รายละเอียด: {e}"
+        )
         print("=" * 60)
 
         await ctx.send(
-            f"❌ เปิดเสียงเพลงไม่ได้ครับ\n"
+            "❌ เปิดเสียงเพลงไม่ได้ครับ\n"
             f"`{type(e).__name__}: {e}`"
         )
 
@@ -228,7 +265,7 @@ async def play_next(ctx):
         return
 
     # ------------------------------------------------
-    # เพลงเล่นจบ
+    # Callback เมื่อเพลงจบ
     # ------------------------------------------------
 
     def after_playing(error):
@@ -245,7 +282,7 @@ async def play_next(ctx):
         )
 
     # ------------------------------------------------
-    # เริ่มเล่น
+    # เริ่มเล่นเพลง
     # ------------------------------------------------
 
     try:
@@ -259,14 +296,20 @@ async def play_next(ctx):
 
         print("=" * 60)
         print("❌ VOICE PLAY ERROR")
-        print(f"ประเภท: {type(e).__name__}")
-        print(f"รายละเอียด: {e}")
+        print(
+            f"ประเภท: {type(e).__name__}"
+        )
+        print(
+            f"รายละเอียด: {e}"
+        )
         print("=" * 60)
 
         await ctx.send(
-            f"❌ เล่นเพลงไม่ได้ครับ\n"
+            "❌ เล่นเพลงไม่ได้ครับ\n"
             f"`{type(e).__name__}: {e}`"
         )
+
+        current_song = None
 
         return
 
@@ -353,13 +396,18 @@ async def join(ctx):
 
     except Exception as e:
 
+        print("=" * 60)
+        print("❌ JOIN ERROR")
         print(
-            f"❌ Join Error: "
-            f"{type(e).__name__}: {e}"
+            f"ประเภท: {type(e).__name__}"
         )
+        print(
+            f"รายละเอียด: {e}"
+        )
+        print("=" * 60)
 
         await ctx.send(
-            f"❌ Bot เข้าห้องไม่ได้ครับ\n"
+            "❌ Bot เข้าห้องไม่ได้ครับ\n"
             f"`{type(e).__name__}: {e}`"
         )
 
@@ -372,7 +420,7 @@ async def join(ctx):
 async def play(ctx, *, search):
 
     # ------------------------------------------------
-    # ตรวจ Voice
+    # ตรวจสอบว่า User อยู่ใน Voice หรือไม่
     # ------------------------------------------------
 
     if ctx.author.voice is None:
@@ -384,7 +432,7 @@ async def play(ctx, *, search):
         return
 
     # ------------------------------------------------
-    # Connect Voice
+    # ให้ Bot เข้า Voice
     # ------------------------------------------------
 
     if ctx.voice_client is None:
@@ -396,7 +444,7 @@ async def play(ctx, *, search):
         except Exception as e:
 
             await ctx.send(
-                f"❌ Bot เข้า Voice ไม่ได้ครับ\n"
+                "❌ Bot เข้า Voice ไม่ได้ครับ\n"
                 f"`{type(e).__name__}: {e}`"
             )
 
@@ -405,7 +453,7 @@ async def play(ctx, *, search):
     voice = ctx.voice_client
 
     # ------------------------------------------------
-    # กำลังค้นหา
+    # แสดงสถานะกำลังค้นหา
     # ------------------------------------------------
 
     message = await ctx.send(
@@ -441,7 +489,7 @@ async def play(ctx, *, search):
 
             await message.edit(
                 content=(
-                    f"📋 เพิ่มเข้าคิวแล้ว\n"
+                    "📋 เพิ่มเข้าคิวแล้ว\n"
                     f"🎵 **{song['title']}**\n"
                     f"ลำดับที่ "
                     f"**{len(music_queue)}**"
@@ -463,19 +511,13 @@ async def play(ctx, *, search):
     except Exception as e:
 
         print("=" * 60)
-
-        print(
-            "❌ PLAY ERROR"
-        )
-
+        print("❌ PLAY ERROR")
         print(
             f"ประเภท: {type(e).__name__}"
         )
-
         print(
             f"รายละเอียด: {e}"
         )
-
         print("=" * 60)
 
         try:
@@ -488,6 +530,7 @@ async def play(ctx, *, search):
             )
 
         except Exception:
+
             pass
 
 
@@ -633,7 +676,7 @@ async def nowplaying(ctx):
         return
 
     await ctx.send(
-        f"🎵 **กำลังเล่น**\n"
+        "🎵 **กำลังเล่น**\n"
         f"{current_song['title']}"
     )
 
@@ -712,12 +755,22 @@ async def on_command_error(ctx, error):
         error,
         commands.CommandNotFound
     ):
+
         return
 
+    print("=" * 60)
+
+    print("❌ COMMAND ERROR")
+
     print(
-        f"❌ Command Error: "
-        f"{type(error).__name__}: {error}"
+        f"ประเภท: {type(error).__name__}"
     )
+
+    print(
+        f"รายละเอียด: {error}"
+    )
+
+    print("=" * 60)
 
 
 # ==================================================
