@@ -16,7 +16,9 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-    raise ValueError("ไม่พบ DISCORD_TOKEN ใน Environment Variables")
+    raise ValueError(
+        "ไม่พบ DISCORD_TOKEN ใน Environment Variables"
+    )
 
 
 # ==================================================
@@ -38,22 +40,33 @@ bot = commands.Bot(
 
 
 # ==================================================
-# yt-dlp
+# yt-dlp OPTIONS
 # ==================================================
 
 YTDL_OPTIONS = {
-    "format": "bestaudio/best",
+    "format": "bestaudio[ext=webm]/bestaudio/best",
+
     "noplaylist": True,
+
     "quiet": True,
+
     "no_warnings": True,
 
-    # ค้นหา YouTube
     "default_search": "ytsearch1",
 
-    # YouTube client สำหรับ Server
+    "source_address": "0.0.0.0",
+
+    "geo_bypass": True,
+
+    "nocheckcertificate": True,
+
     "extractor_args": {
         "youtube": {
-            "player_client": ["mweb"]
+            "player_client": [
+                "android_vr",
+                "android",
+                "web"
+            ]
         }
     },
 }
@@ -67,7 +80,8 @@ FFMPEG_OPTIONS = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5"
+        "-reconnect_delay_max 5 "
+        "-nostdin"
     ),
     "options": "-vn",
 }
@@ -78,6 +92,7 @@ FFMPEG_OPTIONS = {
 # ==================================================
 
 music_queue = []
+
 current_song = None
 
 
@@ -89,17 +104,21 @@ async def search_song(search):
 
     loop = asyncio.get_running_loop()
 
-    try:
+    def extract():
 
         with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
 
-            info = await loop.run_in_executor(
-                None,
-                lambda: ydl.extract_info(
-                    f"ytsearch1:{search}",
-                    download=False
-                )
+            return ydl.extract_info(
+                f"ytsearch1:{search}",
+                download=False
             )
+
+    try:
+
+        info = await loop.run_in_executor(
+            None,
+            extract
+        )
 
         entries = info.get("entries")
 
@@ -109,18 +128,27 @@ async def search_song(search):
         song = entries[0]
 
         return {
-            "title": song.get("title", search),
-            "url": song.get("url"),
-            "webpage_url": song.get("webpage_url"),
+            "title": song.get(
+                "title",
+                search
+            ),
+
+            "url": song.get(
+                "url"
+            ),
+
+            "webpage_url": song.get(
+                "webpage_url"
+            ),
         }
 
     except Exception as e:
 
-        print("=" * 50)
+        print("=" * 60)
         print("❌ YOUTUBE SEARCH ERROR")
         print(f"ประเภท: {type(e).__name__}")
         print(f"รายละเอียด: {e}")
-        print("=" * 50)
+        print("=" * 60)
 
         raise
 
@@ -139,7 +167,7 @@ async def play_next(ctx):
         return
 
     # ----------------------------------------------
-    # ไม่มีเพลงในคิว
+    # Queue หมด
     # ----------------------------------------------
 
     if not music_queue:
@@ -153,23 +181,43 @@ async def play_next(ctx):
         return
 
     # ----------------------------------------------
-    # เอาเพลงแรกออกจาก Queue
+    # เอาเพลงจาก Queue
     # ----------------------------------------------
 
     current_song = music_queue.pop(0)
 
     title = current_song["title"]
+
     audio_url = current_song["url"]
 
     # ----------------------------------------------
     # FFmpeg
     # ----------------------------------------------
 
-    source = discord.FFmpegPCMAudio(
-        audio_url,
-        executable="ffmpeg",
-        **FFMPEG_OPTIONS
-    )
+    try:
+
+        source = discord.FFmpegPCMAudio(
+            audio_url,
+            executable="ffmpeg",
+            **FFMPEG_OPTIONS
+        )
+
+    except Exception as e:
+
+        print("=" * 60)
+        print("❌ FFMPEG ERROR")
+        print(f"ประเภท: {type(e).__name__}")
+        print(f"รายละเอียด: {e}")
+        print("=" * 60)
+
+        await ctx.send(
+            f"❌ เปิดเสียงเพลงไม่ได้ครับ\n"
+            f"`{type(e).__name__}: {e}`"
+        )
+
+        current_song = None
+
+        return
 
     # ----------------------------------------------
     # เพลงเล่นจบ
@@ -189,13 +237,30 @@ async def play_next(ctx):
         )
 
     # ----------------------------------------------
-    # เริ่มเล่น
+    # เล่น
     # ----------------------------------------------
 
-    voice.play(
-        source,
-        after=after_playing
-    )
+    try:
+
+        voice.play(
+            source,
+            after=after_playing
+        )
+
+    except Exception as e:
+
+        print("=" * 60)
+        print("❌ VOICE PLAY ERROR")
+        print(f"ประเภท: {type(e).__name__}")
+        print(f"รายละเอียด: {e}")
+        print("=" * 60)
+
+        await ctx.send(
+            f"❌ เล่นเพลงไม่ได้ครับ\n"
+            f"`{type(e).__name__}: {e}`"
+        )
+
+        return
 
     await ctx.send(
         f"🎵 กำลังเล่น **{title}**"
@@ -209,27 +274,27 @@ async def play_next(ctx):
 @bot.event
 async def on_ready():
 
-    print("=" * 50)
+    print("=" * 60)
 
     print(
-        f"Login สำเร็จ: {bot.user}"
+        f"✅ Login สำเร็จ: {bot.user}"
     )
 
     print(
-        f"Bot ID: {bot.user.id}"
+        f"🆔 Bot ID: {bot.user.id}"
     )
 
     print(
-        "คำสั่งที่ Bot มี:"
+        "📋 คำสั่งที่ Bot มี:"
     )
 
     for command in bot.commands:
 
         print(
-            f"  !{command.name}"
+            f"   !{command.name}"
         )
 
-    print("=" * 50)
+    print("=" * 60)
 
 
 # ==================================================
@@ -274,7 +339,8 @@ async def join(ctx):
             await channel.connect()
 
         await ctx.send(
-            f"🎤 DJ Pop เข้าห้อง **{channel.name}** แล้วครับ!"
+            f"🎤 DJ Pop เข้าห้อง "
+            f"**{channel.name}** แล้วครับ!"
         )
 
     except Exception as e:
@@ -298,7 +364,7 @@ async def join(ctx):
 async def play(ctx, *, search):
 
     # ----------------------------------------------
-    # ตรวจสอบว่า User อยู่ใน Voice หรือไม่
+    # ตรวจ Voice
     # ----------------------------------------------
 
     if ctx.author.voice is None:
@@ -331,7 +397,7 @@ async def play(ctx, *, search):
     voice = ctx.voice_client
 
     # ----------------------------------------------
-    # ข้อความค้นหา
+    # กำลังค้นหา
     # ----------------------------------------------
 
     message = await ctx.send(
@@ -340,11 +406,11 @@ async def play(ctx, *, search):
 
     try:
 
-        # ------------------------------------------
-        # ค้นหาเพลง
-        # ------------------------------------------
-
         song = await search_song(search)
+
+        # ------------------------------------------
+        # ไม่พบเพลง
+        # ------------------------------------------
 
         if song is None:
 
@@ -355,10 +421,13 @@ async def play(ctx, *, search):
             return
 
         # ------------------------------------------
-        # ถ้ามีเพลงกำลังเล่น
+        # มีเพลงเล่นอยู่
         # ------------------------------------------
 
-        if voice.is_playing() or voice.is_paused():
+        if (
+            voice.is_playing()
+            or voice.is_paused()
+        ):
 
             music_queue.append(song)
 
@@ -366,14 +435,15 @@ async def play(ctx, *, search):
                 content=(
                     f"📋 เพิ่มเข้าคิวแล้ว\n"
                     f"🎵 **{song['title']}**\n"
-                    f"ลำดับที่ **{len(music_queue)}**"
+                    f"ลำดับที่ "
+                    f"**{len(music_queue)}**"
                 )
             )
 
             return
 
         # ------------------------------------------
-        # ถ้ายังไม่มีเพลงเล่น
+        # ไม่มีเพลงเล่น
         # ------------------------------------------
 
         music_queue.append(song)
@@ -384,15 +454,21 @@ async def play(ctx, *, search):
 
     except Exception as e:
 
-        print("=" * 50)
-        print("❌ PLAY ERROR")
+        print("=" * 60)
+
+        print(
+            "❌ PLAY ERROR"
+        )
+
         print(
             f"ประเภท: {type(e).__name__}"
         )
+
         print(
             f"รายละเอียด: {e}"
         )
-        print("=" * 50)
+
+        print("=" * 60)
 
         try:
 
@@ -577,7 +653,10 @@ async def stop(ctx):
 
     current_song = None
 
-    if voice.is_playing() or voice.is_paused():
+    if (
+        voice.is_playing()
+        or voice.is_paused()
+    ):
 
         voice.stop()
 
@@ -619,7 +698,10 @@ async def leave(ctx):
 # ==================================================
 
 @bot.event
-async def on_command_error(ctx, error):
+async def on_command_error(
+    ctx,
+    error
+):
 
     if isinstance(
         error,
