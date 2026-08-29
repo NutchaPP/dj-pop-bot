@@ -8,7 +8,7 @@ import yt_dlp
 
 
 # ==================================================
-# โหลด Token
+# โหลด Environment Variables
 # ==================================================
 
 load_dotenv()
@@ -57,7 +57,7 @@ COOKIES_FILE = os.path.join(
 
 YTDL_OPTIONS = {
 
-    # ไม่บังคับ ext / format ที่อาจไม่มี
+    # เลือก audio ที่มีอยู่จริง
     "format": "bestaudio/best",
 
     "noplaylist": True,
@@ -74,16 +74,29 @@ YTDL_OPTIONS = {
 
     "nocheckcertificate": True,
 
-    # ใช้ cookies.txt
+    # ------------------------------------------------
+    # Cookies
+    # ------------------------------------------------
+
     "cookiefile": COOKIES_FILE,
 
-    # Client ที่มีโอกาสใช้งานได้
+    # ------------------------------------------------
+    # JavaScript Runtime
+    # ใช้สำหรับ YouTube EJS challenge
+    # ------------------------------------------------
+
+    "js_runtimes": {
+        "node": {}
+    },
+
+    # ------------------------------------------------
+    # YouTube Client
+    # ------------------------------------------------
+
     "extractor_args": {
         "youtube": {
             "player_client": [
-                "web",
-                "android",
-                "ios"
+                "web"
             ]
         }
     },
@@ -117,7 +130,7 @@ current_song = None
 
 
 # ==================================================
-# ตรวจ cookies.txt
+# ตรวจสอบไฟล์ Cookies
 # ==================================================
 
 print("=" * 60)
@@ -125,14 +138,79 @@ print("=" * 60)
 if os.path.exists(COOKIES_FILE):
 
     print("✅ พบ cookies.txt")
-    print(f"📁 ตำแหน่ง: {COOKIES_FILE}")
+    print(
+        f"📁 ตำแหน่ง: {COOKIES_FILE}"
+    )
 
 else:
 
     print("⚠️ ไม่พบ cookies.txt")
-    print(f"📁 ตำแหน่งที่ต้องการ: {COOKIES_FILE}")
+    print(
+        f"📁 ตำแหน่งที่ต้องการ: {COOKIES_FILE}"
+    )
 
 print("=" * 60)
+
+
+# ==================================================
+# ตรวจสอบ Node.js
+# ==================================================
+
+async def check_node():
+
+    loop = asyncio.get_running_loop()
+
+    def run_check():
+
+        return os.system(
+            "node --version > /tmp/node_version.txt 2>&1"
+        )
+
+    try:
+
+        result = await loop.run_in_executor(
+            None,
+            run_check
+        )
+
+        if result == 0:
+
+            try:
+
+                with open(
+                    "/tmp/node_version.txt",
+                    "r",
+                    encoding="utf-8"
+                ) as file:
+
+                    version = file.read().strip()
+
+                print("=" * 60)
+                print("✅ พบ Node.js")
+                print(f"📦 Version: {version}")
+                print("=" * 60)
+
+            except Exception:
+
+                print("✅ พบ Node.js")
+
+        else:
+
+            print("=" * 60)
+            print("⚠️ ไม่พบ Node.js")
+            print(
+                "yt-dlp อาจไม่สามารถแก้ YouTube EJS challenge ได้"
+            )
+            print("=" * 60)
+
+    except Exception as e:
+
+        print("=" * 60)
+        print("⚠️ ตรวจสอบ Node.js ไม่สำเร็จ")
+        print(
+            f"{type(e).__name__}: {e}"
+        )
+        print("=" * 60)
 
 
 # ==================================================
@@ -145,79 +223,22 @@ async def search_song(search):
 
     def extract():
 
-        # --------------------------------------------------
-        # วิธีที่ 1
-        # --------------------------------------------------
+        print("=" * 60)
+        print(
+            f"🔎 กำลังค้นหา: {search}"
+        )
+        print("=" * 60)
 
-        try:
+        with yt_dlp.YoutubeDL(
+            YTDL_OPTIONS
+        ) as ydl:
 
-            options = YTDL_OPTIONS.copy()
-
-            with yt_dlp.YoutubeDL(options) as ydl:
-
-                print("=" * 60)
-                print(f"🔎 กำลังค้นหา: {search}")
-                print("=" * 60)
-
-                info = ydl.extract_info(
-                    f"ytsearch1:{search}",
-                    download=False
-                )
-
-                return info
-
-        except Exception as first_error:
-
-            print("=" * 60)
-            print("⚠️ วิธีค้นหาหลักไม่สำเร็จ")
-            print(
-                f"{type(first_error).__name__}: "
-                f"{first_error}"
+            info = ydl.extract_info(
+                f"ytsearch1:{search}",
+                download=False
             )
-            print("🔄 กำลังลอง fallback...")
-            print("=" * 60)
 
-            # --------------------------------------------------
-            # วิธีที่ 2 - ใช้ URL โดยตรงถ้าผู้ใช้ส่ง YouTube URL
-            # --------------------------------------------------
-
-            if search.startswith(
-                (
-                    "https://www.youtube.com/",
-                    "https://youtu.be/",
-                    "http://www.youtube.com/",
-                    "http://youtu.be/"
-                )
-            ):
-
-                fallback_options = {
-
-                    "format": "bestaudio/best",
-
-                    "noplaylist": True,
-
-                    "quiet": True,
-
-                    "no_warnings": False,
-
-                    "cookiefile": COOKIES_FILE,
-
-                    "source_address": "0.0.0.0",
-
-                    "nocheckcertificate": True,
-                }
-
-                with yt_dlp.YoutubeDL(
-                    fallback_options
-                ) as ydl:
-
-                    return ydl.extract_info(
-                        search,
-                        download=False
-                    )
-
-            raise first_error
-
+            return info
 
     try:
 
@@ -225,10 +246,6 @@ async def search_song(search):
             None,
             extract
         )
-
-        # --------------------------------------------------
-        # Search Result
-        # --------------------------------------------------
 
         entries = info.get("entries")
 
@@ -238,54 +255,49 @@ async def search_song(search):
 
         song = entries[0]
 
-        # --------------------------------------------------
-        # ตรวจ URL
-        # --------------------------------------------------
+        title = song.get(
+            "title",
+            search
+        )
 
-        audio_url = song.get("url")
+        webpage_url = song.get(
+            "webpage_url"
+        )
 
-        if not audio_url:
+        audio_url = song.get(
+            "url"
+        )
 
-            # บางกรณี search result ยังไม่มี direct URL
-            webpage_url = song.get(
-                "webpage_url"
+        # ------------------------------------------------
+        # ถ้ายังไม่มี Audio URL
+        # ให้ดึงข้อมูลจากหน้า Video โดยตรง
+        # ------------------------------------------------
+
+        if not audio_url and webpage_url:
+
+            print(
+                "🔄 กำลังดึง Audio URL จาก Video..."
             )
 
-            if webpage_url:
+            direct_options = YTDL_OPTIONS.copy()
 
-                print(
-                    "🔄 กำลังดึงข้อมูลเพลงจาก URL..."
+            with yt_dlp.YoutubeDL(
+                direct_options
+            ) as ydl:
+
+                direct_info = ydl.extract_info(
+                    webpage_url,
+                    download=False
                 )
 
-                direct_options = {
+                audio_url = direct_info.get(
+                    "url"
+                )
 
-                    "format": "bestaudio/best",
-
-                    "noplaylist": True,
-
-                    "quiet": True,
-
-                    "cookiefile": COOKIES_FILE,
-
-                    "source_address": "0.0.0.0",
-
-                    "nocheckcertificate": True,
-                }
-
-                with yt_dlp.YoutubeDL(
-                    direct_options
-                ) as ydl:
-
-                    direct_info = ydl.extract_info(
-                        webpage_url,
-                        download=False
-                    )
-
-                    audio_url = direct_info.get(
-                        "url"
-                    )
-
-                    song = direct_info
+                title = direct_info.get(
+                    "title",
+                    title
+                )
 
         if not audio_url:
 
@@ -293,24 +305,19 @@ async def search_song(search):
                 "ไม่พบ Audio URL จาก YouTube"
             )
 
-        # --------------------------------------------------
-        # คืนข้อมูลเพลง
-        # --------------------------------------------------
+        print("=" * 60)
+        print("✅ พบเพลง")
+        print(f"🎵 {title}")
+        print("=" * 60)
 
         return {
 
-            "title": song.get(
-                "title",
-                search
-            ),
+            "title": title,
 
             "url": audio_url,
 
-            "webpage_url": song.get(
-                "webpage_url"
-            ),
+            "webpage_url": webpage_url,
         }
-
 
     except Exception as e:
 
@@ -338,6 +345,7 @@ async def play_next(ctx):
     voice = ctx.voice_client
 
     if voice is None:
+
         return
 
     # ------------------------------------------------
@@ -371,11 +379,8 @@ async def play_next(ctx):
     try:
 
         source = discord.FFmpegPCMAudio(
-
             audio_url,
-
             executable="ffmpeg",
-
             **FFMPEG_OPTIONS
         )
 
@@ -401,7 +406,7 @@ async def play_next(ctx):
         return
 
     # ------------------------------------------------
-    # เพลงเล่นจบ
+    # Callback เมื่อเพลงจบ
     # ------------------------------------------------
 
     def after_playing(error):
@@ -482,6 +487,9 @@ async def on_ready():
         )
 
     print("=" * 60)
+
+    # ตรวจ Node.js
+    await check_node()
 
 
 # ==================================================
@@ -600,9 +608,9 @@ async def play(ctx, *, search):
 
         song = await search_song(search)
 
-        # --------------------------------------------
-        # ไม่พบเพลง
-        # --------------------------------------------
+        # ------------------------------------------------
+        # ไม่พบ
+        # ------------------------------------------------
 
         if song is None:
 
@@ -612,9 +620,9 @@ async def play(ctx, *, search):
 
             return
 
-        # --------------------------------------------
+        # ------------------------------------------------
         # มีเพลงกำลังเล่น
-        # --------------------------------------------
+        # ------------------------------------------------
 
         if (
             voice.is_playing()
@@ -634,9 +642,9 @@ async def play(ctx, *, search):
 
             return
 
-        # --------------------------------------------
+        # ------------------------------------------------
         # ไม่มีเพลงเล่น
-        # --------------------------------------------
+        # ------------------------------------------------
 
         music_queue.append(song)
 
