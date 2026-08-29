@@ -54,12 +54,17 @@ YTDL_OPTIONS = {
 
     "default_search": "ytsearch1",
 
+    # ใช้ cookies จาก Bot-Hosting
+    "cookiefile": "cookies.txt",
+
+    # Network
     "source_address": "0.0.0.0",
 
     "geo_bypass": True,
 
     "nocheckcertificate": True,
 
+    # YouTube clients
     "extractor_args": {
         "youtube": {
             "player_client": [
@@ -94,6 +99,24 @@ FFMPEG_OPTIONS = {
 music_queue = []
 
 current_song = None
+
+
+# ==================================================
+# ตรวจสอบ Cookies
+# ==================================================
+
+def check_cookies():
+
+    if os.path.exists("cookies.txt"):
+
+        print("✅ พบ cookies.txt")
+
+        return True
+
+    print("⚠️ ไม่พบ cookies.txt")
+    print("⚠️ YouTube อาจขึ้น Sign in to confirm you're not a bot")
+
+    return False
 
 
 # ==================================================
@@ -166,6 +189,7 @@ async def play_next(ctx):
     if voice is None:
         return
 
+
     # ----------------------------------------------
     # Queue หมด
     # ----------------------------------------------
@@ -180,6 +204,7 @@ async def play_next(ctx):
 
         return
 
+
     # ----------------------------------------------
     # เอาเพลงจาก Queue
     # ----------------------------------------------
@@ -189,6 +214,7 @@ async def play_next(ctx):
     title = current_song["title"]
 
     audio_url = current_song["url"]
+
 
     # ----------------------------------------------
     # FFmpeg
@@ -219,6 +245,7 @@ async def play_next(ctx):
 
         return
 
+
     # ----------------------------------------------
     # เพลงเล่นจบ
     # ----------------------------------------------
@@ -235,6 +262,7 @@ async def play_next(ctx):
             play_next(ctx),
             bot.loop
         )
+
 
     # ----------------------------------------------
     # เล่น
@@ -262,6 +290,7 @@ async def play_next(ctx):
 
         return
 
+
     await ctx.send(
         f"🎵 กำลังเล่น **{title}**"
     )
@@ -283,6 +312,8 @@ async def on_ready():
     print(
         f"🆔 Bot ID: {bot.user.id}"
     )
+
+    check_cookies()
 
     print(
         "📋 คำสั่งที่ Bot มี:"
@@ -323,6 +354,7 @@ async def join(ctx):
         )
 
         return
+
 
     channel = ctx.author.voice.channel
 
@@ -375,6 +407,7 @@ async def play(ctx, *, search):
 
         return
 
+
     # ----------------------------------------------
     # Connect Voice
     # ----------------------------------------------
@@ -394,7 +427,9 @@ async def play(ctx, *, search):
 
             return
 
+
     voice = ctx.voice_client
+
 
     # ----------------------------------------------
     # กำลังค้นหา
@@ -404,9 +439,11 @@ async def play(ctx, *, search):
         f"🔎 กำลังค้นหา **{search}** ..."
     )
 
+
     try:
 
         song = await search_song(search)
+
 
         # ------------------------------------------
         # ไม่พบเพลง
@@ -419,6 +456,7 @@ async def play(ctx, *, search):
             )
 
             return
+
 
         # ------------------------------------------
         # มีเพลงเล่นอยู่
@@ -442,6 +480,7 @@ async def play(ctx, *, search):
 
             return
 
+
         # ------------------------------------------
         # ไม่มีเพลงเล่น
         # ------------------------------------------
@@ -451,6 +490,7 @@ async def play(ctx, *, search):
         await message.delete()
 
         await play_next(ctx)
+
 
     except Exception as e:
 
@@ -469,6 +509,7 @@ async def play(ctx, *, search):
         )
 
         print("=" * 60)
+
 
         try:
 
@@ -500,6 +541,7 @@ async def skip(ctx):
 
         return
 
+
     if not voice.is_playing():
 
         await ctx.send(
@@ -507,6 +549,7 @@ async def skip(ctx):
         )
 
         return
+
 
     voice.stop()
 
@@ -531,6 +574,7 @@ async def pause(ctx):
         )
 
         return
+
 
     if voice.is_playing():
 
@@ -564,6 +608,7 @@ async def resume(ctx):
 
         return
 
+
     if voice.is_paused():
 
         voice.resume()
@@ -594,7 +639,9 @@ async def queue(ctx):
 
         return
 
+
     text = "📋 **คิวเพลง**\n\n"
+
 
     for index, song in enumerate(
         music_queue,
@@ -605,6 +652,7 @@ async def queue(ctx):
             f"**{index}.** "
             f"{song['title']}\n"
         )
+
 
     await ctx.send(text)
 
@@ -623,6 +671,7 @@ async def nowplaying(ctx):
         )
 
         return
+
 
     await ctx.send(
         f"🎵 **กำลังเล่น**\n"
@@ -649,9 +698,11 @@ async def stop(ctx):
 
         return
 
+
     music_queue.clear()
 
     current_song = None
+
 
     if (
         voice.is_playing()
@@ -659,6 +710,7 @@ async def stop(ctx):
     ):
 
         voice.stop()
+
 
     await ctx.send(
         "⏹️ หยุดเพลงและล้างคิวแล้วครับ"
@@ -698,16 +750,14 @@ async def leave(ctx):
 # ==================================================
 
 @bot.event
-async def on_command_error(
-    ctx,
-    error
-):
+async def on_command_error(ctx, error):
 
     if isinstance(
         error,
         commands.CommandNotFound
     ):
         return
+
 
     print(
         f"❌ Command Error: "
