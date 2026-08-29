@@ -43,7 +43,12 @@ bot = commands.Bot(
 # Path
 # ==================================================
 
-BASE_DIR = "/home/container"
+# ใช้โฟลเดอร์เดียวกับ bot.py
+# ทำให้ใช้ได้ทั้ง Local และ Hosting
+
+BASE_DIR = os.path.dirname(
+    os.path.abspath(__file__)
+)
 
 COOKIES_FILE = os.path.join(
     BASE_DIR,
@@ -57,21 +62,27 @@ COOKIES_FILE = os.path.join(
 
 YTDL_OPTIONS = {
 
-    # เลือก audio ที่มีอยู่จริง
+    # Audio ที่ดีที่สุด
     "format": "bestaudio/best",
 
+    # ไม่เอา Playlist
     "noplaylist": True,
 
+    # ลดข้อความจาก yt-dlp
     "quiet": True,
 
     "no_warnings": False,
 
+    # ค้นหา YouTube 1 ผลลัพธ์
     "default_search": "ytsearch1",
 
+    # IPv4
     "source_address": "0.0.0.0",
 
+    # พยายาม bypass geo restriction
     "geo_bypass": True,
 
+    # ไม่ตรวจ SSL certificate
     "nocheckcertificate": True,
 
     # ------------------------------------------------
@@ -81,22 +92,31 @@ YTDL_OPTIONS = {
     "cookiefile": COOKIES_FILE,
 
     # ------------------------------------------------
-    # JavaScript Runtime
-    # ใช้สำหรับ YouTube EJS challenge
+    # สำคัญ
+    #
+    # ไม่กำหนด js_runtimes
+    # เพราะ Hosting ของป๊อปไม่มี Node.js
+    #
+    # เดิมมี:
+    #
+    # "js_runtimes": {
+    #     "node": {}
+    # }
+    #
+    # ลบออกแล้ว
     # ------------------------------------------------
-
-    "js_runtimes": {
-        "node": {}
-    },
 
     # ------------------------------------------------
     # YouTube Client
+    #
+    # ใช้ android client ก่อน
+    # เพื่อพยายามหลีกเลี่ยง EJS challenge
     # ------------------------------------------------
 
     "extractor_args": {
         "youtube": {
             "player_client": [
-                "web"
+                "android"
             ]
         }
     },
@@ -138,6 +158,7 @@ print("=" * 60)
 if os.path.exists(COOKIES_FILE):
 
     print("✅ พบ cookies.txt")
+
     print(
         f"📁 ตำแหน่ง: {COOKIES_FILE}"
     )
@@ -145,6 +166,7 @@ if os.path.exists(COOKIES_FILE):
 else:
 
     print("⚠️ ไม่พบ cookies.txt")
+
     print(
         f"📁 ตำแหน่งที่ต้องการ: {COOKIES_FILE}"
     )
@@ -153,17 +175,17 @@ print("=" * 60)
 
 
 # ==================================================
-# ตรวจสอบ Node.js
+# ตรวจสอบ FFmpeg
 # ==================================================
 
-async def check_node():
+async def check_ffmpeg():
 
     loop = asyncio.get_running_loop()
 
     def run_check():
 
         return os.system(
-            "node --version > /tmp/node_version.txt 2>&1"
+            "ffmpeg -version > /tmp/ffmpeg_version.txt 2>&1"
         )
 
     try:
@@ -173,40 +195,25 @@ async def check_node():
             run_check
         )
 
+        print("=" * 60)
+
         if result == 0:
 
-            try:
-
-                with open(
-                    "/tmp/node_version.txt",
-                    "r",
-                    encoding="utf-8"
-                ) as file:
-
-                    version = file.read().strip()
-
-                print("=" * 60)
-                print("✅ พบ Node.js")
-                print(f"📦 Version: {version}")
-                print("=" * 60)
-
-            except Exception:
-
-                print("✅ พบ Node.js")
+            print("✅ พบ FFmpeg")
 
         else:
 
-            print("=" * 60)
-            print("⚠️ ไม่พบ Node.js")
+            print("⚠️ ไม่พบ FFmpeg")
             print(
-                "yt-dlp อาจไม่สามารถแก้ YouTube EJS challenge ได้"
+                "Bot อาจเข้า Voice ได้ แต่ไม่สามารถเล่นเพลงได้"
             )
-            print("=" * 60)
+
+        print("=" * 60)
 
     except Exception as e:
 
         print("=" * 60)
-        print("⚠️ ตรวจสอบ Node.js ไม่สำเร็จ")
+        print("⚠️ ตรวจสอบ FFmpeg ไม่สำเร็จ")
         print(
             f"{type(e).__name__}: {e}"
         )
@@ -247,6 +254,10 @@ async def search_song(search):
             extract
         )
 
+        if not info:
+
+            return None
+
         entries = info.get("entries")
 
         if not entries:
@@ -254,6 +265,10 @@ async def search_song(search):
             return None
 
         song = entries[0]
+
+        if not song:
+
+            return None
 
         title = song.get(
             "title",
@@ -270,7 +285,7 @@ async def search_song(search):
 
         # ------------------------------------------------
         # ถ้ายังไม่มี Audio URL
-        # ให้ดึงข้อมูลจากหน้า Video โดยตรง
+        # ดึงข้อมูลจาก Video โดยตรง
         # ------------------------------------------------
 
         if not audio_url and webpage_url:
@@ -307,7 +322,9 @@ async def search_song(search):
 
         print("=" * 60)
         print("✅ พบเพลง")
-        print(f"🎵 {title}")
+        print(
+            f"🎵 {title}"
+        )
         print("=" * 60)
 
         return {
@@ -323,12 +340,15 @@ async def search_song(search):
 
         print("=" * 60)
         print("❌ YOUTUBE SEARCH ERROR")
+
         print(
             f"ประเภท: {type(e).__name__}"
         )
+
         print(
             f"รายละเอียด: {e}"
         )
+
         print("=" * 60)
 
         raise
@@ -388,12 +408,15 @@ async def play_next(ctx):
 
         print("=" * 60)
         print("❌ FFMPEG ERROR")
+
         print(
             f"ประเภท: {type(e).__name__}"
         )
+
         print(
             f"รายละเอียด: {e}"
         )
+
         print("=" * 60)
 
         await ctx.send(
@@ -437,12 +460,15 @@ async def play_next(ctx):
 
         print("=" * 60)
         print("❌ VOICE PLAY ERROR")
+
         print(
             f"ประเภท: {type(e).__name__}"
         )
+
         print(
             f"รายละเอียด: {e}"
         )
+
         print("=" * 60)
 
         await ctx.send(
@@ -488,8 +514,23 @@ async def on_ready():
 
     print("=" * 60)
 
-    # ตรวจ Node.js
-    await check_node()
+    # ตรวจสอบ Cookies
+
+    if os.path.exists(COOKIES_FILE):
+
+        print(
+            "🍪 Cookies: พร้อมใช้งาน"
+        )
+
+    else:
+
+        print(
+            "🍪 Cookies: ไม่พบไฟล์"
+        )
+
+    # ตรวจสอบ FFmpeg
+
+    await check_ffmpeg()
 
 
 # ==================================================
@@ -542,12 +583,15 @@ async def join(ctx):
 
         print("=" * 60)
         print("❌ JOIN ERROR")
+
         print(
             f"ประเภท: {type(e).__name__}"
         )
+
         print(
             f"รายละเอียด: {e}"
         )
+
         print("=" * 60)
 
         await ctx.send(
@@ -662,12 +706,15 @@ async def play(ctx, *, search):
 
         print("=" * 60)
         print("❌ PLAY ERROR")
+
         print(
             f"ประเภท: {type(e).__name__}"
         )
+
         print(
             f"รายละเอียด: {e}"
         )
+
         print("=" * 60)
 
         try:
@@ -910,12 +957,15 @@ async def on_command_error(ctx, error):
 
     print("=" * 60)
     print("❌ COMMAND ERROR")
+
     print(
         f"ประเภท: {type(error).__name__}"
     )
+
     print(
         f"รายละเอียด: {error}"
     )
+
     print("=" * 60)
 
 
