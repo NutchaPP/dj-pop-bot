@@ -50,10 +50,10 @@ YTDL_OPTIONS = {
     # ค้นหา YouTube
     "default_search": "ytsearch1",
 
-    # ลองใช้ YouTube client ที่เหมาะกับการรันบน Server
+    # YouTube client สำหรับ Server
     "extractor_args": {
         "youtube": {
-            "player_client": ["android", "web"]
+            "player_client": ["mweb"]
         }
     },
 }
@@ -90,6 +90,7 @@ async def search_song(search):
     loop = asyncio.get_running_loop()
 
     try:
+
         with yt_dlp.YoutubeDL(YTDL_OPTIONS) as ydl:
 
             info = await loop.run_in_executor(
@@ -177,6 +178,7 @@ async def play_next(ctx):
     def after_playing(error):
 
         if error:
+
             print(
                 f"❌ Audio Error: {error}"
             )
@@ -222,6 +224,7 @@ async def on_ready():
     )
 
     for command in bot.commands:
+
         print(
             f"  !{command.name}"
         )
