@@ -1,5 +1,7 @@
 import os
 import asyncio
+import shutil
+import subprocess
 
 import discord
 from discord.ext import commands
@@ -50,10 +52,153 @@ BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
 
+
+# ==================================================
+# Cookies
+# ==================================================
+
 COOKIES_FILE = os.path.join(
     BASE_DIR,
     "cookies.txt"
 )
+
+
+# ==================================================
+# Deno
+# ==================================================
+
+def find_deno():
+
+    """
+    ค้นหา Deno ในตำแหน่งต่าง ๆ
+
+    รองรับ:
+    1. deno ที่อยู่ใน PATH
+    2. /home/container/deno
+    3. ./deno
+    4. ./bin/deno
+    """
+
+    # ------------------------------------------------
+    # 1. PATH
+    # ------------------------------------------------
+
+    deno_path = shutil.which("deno")
+
+    if deno_path:
+        return deno_path
+
+    # ------------------------------------------------
+    # 2. ตำแหน่งที่ Hosting นิยมใช้
+    # ------------------------------------------------
+
+    possible_paths = [
+
+        os.path.join(
+            BASE_DIR,
+            "deno"
+        ),
+
+        os.path.join(
+            BASE_DIR,
+            "bin",
+            "deno"
+        ),
+
+        "/home/container/deno",
+
+        "/home/container/bin/deno",
+
+        "/usr/local/bin/deno",
+
+        "/usr/bin/deno",
+
+    ]
+
+    for path in possible_paths:
+
+        if os.path.isfile(path):
+
+            return path
+
+    return None
+
+
+# ==================================================
+# ตรวจสอบ Deno
+# ==================================================
+
+DENO_PATH = find_deno()
+
+
+# ==================================================
+# แสดงข้อมูล Deno
+# ==================================================
+
+def print_deno_status():
+
+    print("=" * 60)
+
+    if DENO_PATH:
+
+        print("🦕 พบ Deno")
+        print(
+            f"📁 Path: {DENO_PATH}"
+        )
+
+        try:
+
+            result = subprocess.run(
+                [
+                    DENO_PATH,
+                    "--version"
+                ],
+                capture_output=True,
+                text=True,
+                timeout=10
+            )
+
+            if result.returncode == 0:
+
+                version = result.stdout.strip()
+
+                print(
+                    f"📦 Version:\n{version}"
+                )
+
+            else:
+
+                print(
+                    "⚠️ ไม่สามารถอ่าน Version ของ Deno ได้"
+                )
+
+        except Exception as e:
+
+            print(
+                "⚠️ ตรวจสอบ Version Deno ไม่สำเร็จ"
+            )
+
+            print(
+                f"{type(e).__name__}: {e}"
+            )
+
+    else:
+
+        print("❌ ไม่พบ Deno")
+
+        print(
+            "⚠️ YouTube EJS challenge อาจทำงานไม่ได้"
+        )
+
+        print(
+            "📌 ต้องติดตั้ง Deno แล้ววาง executable"
+        )
+
+        print(
+            "   ไว้ใน PATH หรือโฟลเดอร์เดียวกับ bot.py"
+        )
+
+    print("=" * 60)
 
 
 # ==================================================
@@ -62,27 +207,44 @@ COOKIES_FILE = os.path.join(
 
 YTDL_OPTIONS = {
 
-    # Audio ที่ดีที่สุด
-    "format": "bestaudio/best",
+    # ------------------------------------------------
+    # Audio
+    # ------------------------------------------------
 
+    "format": (
+        "bestaudio[ext=m4a]/"
+        "bestaudio/"
+        "best"
+    ),
+
+    # ------------------------------------------------
     # ไม่เอา Playlist
+    # ------------------------------------------------
+
     "noplaylist": True,
 
-    # ลดข้อความจาก yt-dlp
+    # ------------------------------------------------
+    # Output
+    # ------------------------------------------------
+
     "quiet": True,
 
     "no_warnings": False,
 
-    # ค้นหา YouTube 1 ผลลัพธ์
+    # ------------------------------------------------
+    # Search
+    # ------------------------------------------------
+
     "default_search": "ytsearch1",
 
-    # IPv4
+    # ------------------------------------------------
+    # Network
+    # ------------------------------------------------
+
     "source_address": "0.0.0.0",
 
-    # พยายาม bypass geo restriction
     "geo_bypass": True,
 
-    # ไม่ตรวจ SSL certificate
     "nocheckcertificate": True,
 
     # ------------------------------------------------
@@ -92,35 +254,40 @@ YTDL_OPTIONS = {
     "cookiefile": COOKIES_FILE,
 
     # ------------------------------------------------
-    # สำคัญ
-    #
-    # ไม่กำหนด js_runtimes
-    # เพราะ Hosting ของป๊อปไม่มี Node.js
-    #
-    # เดิมมี:
-    #
-    # "js_runtimes": {
-    #     "node": {}
-    # }
-    #
-    # ลบออกแล้ว
-    # ------------------------------------------------
-
-    # ------------------------------------------------
     # YouTube Client
     #
-    # ใช้ android client ก่อน
-    # เพื่อพยายามหลีกเลี่ยง EJS challenge
+    # ห้ามใช้ android เพราะ android client
+    # ไม่รองรับ cookies
+    #
+    # ใช้ web ซึ่งรองรับ cookies
     # ------------------------------------------------
 
     "extractor_args": {
+
         "youtube": {
+
             "player_client": [
-                "android"
+                "web"
             ]
+
         }
+
     },
+
 }
+
+
+# ==================================================
+# เพิ่ม Deno ให้ yt-dlp
+# ==================================================
+
+if DENO_PATH:
+
+    YTDL_OPTIONS["js_runtimes"] = {
+
+        "deno": DENO_PATH
+
+    }
 
 
 # ==================================================
@@ -137,6 +304,7 @@ FFMPEG_OPTIONS = {
     ),
 
     "options": "-vn",
+
 }
 
 
@@ -157,7 +325,7 @@ print("=" * 60)
 
 if os.path.exists(COOKIES_FILE):
 
-    print("✅ พบ cookies.txt")
+    print("🍪 พบ cookies.txt")
 
     print(
         f"📁 ตำแหน่ง: {COOKIES_FILE}"
@@ -184,28 +352,31 @@ async def check_ffmpeg():
 
     def run_check():
 
-        return os.system(
-            "ffmpeg -version > /tmp/ffmpeg_version.txt 2>&1"
-        )
+        return shutil.which("ffmpeg")
 
     try:
 
-        result = await loop.run_in_executor(
+        ffmpeg_path = await loop.run_in_executor(
             None,
             run_check
         )
 
         print("=" * 60)
 
-        if result == 0:
+        if ffmpeg_path:
 
             print("✅ พบ FFmpeg")
 
+            print(
+                f"📁 Path: {ffmpeg_path}"
+            )
+
         else:
 
-            print("⚠️ ไม่พบ FFmpeg")
+            print("❌ ไม่พบ FFmpeg")
+
             print(
-                "Bot อาจเข้า Voice ได้ แต่ไม่สามารถเล่นเพลงได้"
+                "⚠️ Bot จะไม่สามารถเล่นเพลงได้"
             )
 
         print("=" * 60)
@@ -213,10 +384,15 @@ async def check_ffmpeg():
     except Exception as e:
 
         print("=" * 60)
-        print("⚠️ ตรวจสอบ FFmpeg ไม่สำเร็จ")
+
+        print(
+            "⚠️ ตรวจสอบ FFmpeg ไม่สำเร็จ"
+        )
+
         print(
             f"{type(e).__name__}: {e}"
         )
+
         print("=" * 60)
 
 
@@ -231,9 +407,11 @@ async def search_song(search):
     def extract():
 
         print("=" * 60)
+
         print(
             f"🔎 กำลังค้นหา: {search}"
         )
+
         print("=" * 60)
 
         with yt_dlp.YoutubeDL(
@@ -258,7 +436,9 @@ async def search_song(search):
 
             return None
 
-        entries = info.get("entries")
+        entries = info.get(
+            "entries"
+        )
 
         if not entries:
 
@@ -269,6 +449,10 @@ async def search_song(search):
         if not song:
 
             return None
+
+        # ------------------------------------------------
+        # ข้อมูลเพลง
+        # ------------------------------------------------
 
         title = song.get(
             "title",
@@ -284,8 +468,8 @@ async def search_song(search):
         )
 
         # ------------------------------------------------
-        # ถ้ายังไม่มี Audio URL
-        # ดึงข้อมูลจาก Video โดยตรง
+        # บางกรณี search result
+        # อาจยังไม่มี direct audio URL
         # ------------------------------------------------
 
         if not audio_url and webpage_url:
@@ -305,14 +489,20 @@ async def search_song(search):
                     download=False
                 )
 
-                audio_url = direct_info.get(
-                    "url"
-                )
+                if direct_info:
 
-                title = direct_info.get(
-                    "title",
-                    title
-                )
+                    audio_url = direct_info.get(
+                        "url"
+                    )
+
+                    title = direct_info.get(
+                        "title",
+                        title
+                    )
+
+        # ------------------------------------------------
+        # ตรวจสอบ Audio URL
+        # ------------------------------------------------
 
         if not audio_url:
 
@@ -321,10 +511,19 @@ async def search_song(search):
             )
 
         print("=" * 60)
+
         print("✅ พบเพลง")
+
         print(
             f"🎵 {title}"
         )
+
+        if webpage_url:
+
+            print(
+                f"🔗 {webpage_url}"
+            )
+
         print("=" * 60)
 
         return {
@@ -334,11 +533,13 @@ async def search_song(search):
             "url": audio_url,
 
             "webpage_url": webpage_url,
+
         }
 
     except Exception as e:
 
         print("=" * 60)
+
         print("❌ YOUTUBE SEARCH ERROR")
 
         print(
@@ -407,6 +608,7 @@ async def play_next(ctx):
     except Exception as e:
 
         print("=" * 60)
+
         print("❌ FFMPEG ERROR")
 
         print(
@@ -440,10 +642,23 @@ async def play_next(ctx):
                 f"❌ Audio Error: {error}"
             )
 
-        asyncio.run_coroutine_threadsafe(
+        future = asyncio.run_coroutine_threadsafe(
             play_next(ctx),
             bot.loop
         )
+
+        try:
+
+            future.result(
+                timeout=30
+            )
+
+        except Exception as callback_error:
+
+            print(
+                "❌ PLAY NEXT ERROR:",
+                callback_error
+            )
 
     # ------------------------------------------------
     # เริ่มเล่น
@@ -459,6 +674,7 @@ async def play_next(ctx):
     except Exception as e:
 
         print("=" * 60)
+
         print("❌ VOICE PLAY ERROR")
 
         print(
@@ -514,7 +730,9 @@ async def on_ready():
 
     print("=" * 60)
 
-    # ตรวจสอบ Cookies
+    # ------------------------------------------------
+    # Cookies
+    # ------------------------------------------------
 
     if os.path.exists(COOKIES_FILE):
 
@@ -525,10 +743,18 @@ async def on_ready():
     else:
 
         print(
-            "🍪 Cookies: ไม่พบไฟล์"
+            "⚠️ Cookies: ไม่พบไฟล์"
         )
 
-    # ตรวจสอบ FFmpeg
+    # ------------------------------------------------
+    # Deno
+    # ------------------------------------------------
+
+    print_deno_status()
+
+    # ------------------------------------------------
+    # FFmpeg
+    # ------------------------------------------------
 
     await check_ffmpeg()
 
@@ -582,6 +808,7 @@ async def join(ctx):
     except Exception as e:
 
         print("=" * 60)
+
         print("❌ JOIN ERROR")
 
         print(
@@ -650,7 +877,9 @@ async def play(ctx, *, search):
 
     try:
 
-        song = await search_song(search)
+        song = await search_song(
+            search
+        )
 
         # ------------------------------------------------
         # ไม่พบ
@@ -673,7 +902,9 @@ async def play(ctx, *, search):
             or voice.is_paused()
         ):
 
-            music_queue.append(song)
+            music_queue.append(
+                song
+            )
 
             await message.edit(
                 content=(
@@ -690,7 +921,9 @@ async def play(ctx, *, search):
         # ไม่มีเพลงเล่น
         # ------------------------------------------------
 
-        music_queue.append(song)
+        music_queue.append(
+            song
+        )
 
         try:
 
@@ -700,11 +933,14 @@ async def play(ctx, *, search):
 
             pass
 
-        await play_next(ctx)
+        await play_next(
+            ctx
+        )
 
     except Exception as e:
 
         print("=" * 60)
+
         print("❌ PLAY ERROR")
 
         print(
@@ -854,7 +1090,9 @@ async def queue(ctx):
             f"{song['title']}\n"
         )
 
-    await ctx.send(text)
+    await ctx.send(
+        text
+    )
 
 
 # ==================================================
@@ -946,7 +1184,10 @@ async def leave(ctx):
 # ==================================================
 
 @bot.event
-async def on_command_error(ctx, error):
+async def on_command_error(
+    ctx,
+    error
+):
 
     if isinstance(
         error,
@@ -955,8 +1196,22 @@ async def on_command_error(ctx, error):
 
         return
 
+    if isinstance(
+        error,
+        commands.MissingRequiredArgument
+    ):
+
+        await ctx.send(
+            "❌ ใช้คำสั่งไม่ครบครับ"
+        )
+
+        return
+
     print("=" * 60)
-    print("❌ COMMAND ERROR")
+
+    print(
+        "❌ COMMAND ERROR"
+    )
 
     print(
         f"ประเภท: {type(error).__name__}"
