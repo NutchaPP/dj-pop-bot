@@ -2,6 +2,8 @@ import os
 import asyncio
 import shutil
 import re
+import subprocess
+import logging
 
 import discord
 from discord.ext import commands
@@ -21,6 +23,16 @@ if not TOKEN:
     raise ValueError(
         "ไม่พบ DISCORD_TOKEN ใน Environment Variables"
     )
+
+
+# ============================================================
+# LOGGING
+# ============================================================
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
 
 
 # ============================================================
@@ -47,23 +59,141 @@ bot = commands.Bot(
 # PATH
 # ============================================================
 
+BASE_DIR = "/home/container"
+
 FFMPEG_PATH = shutil.which("ffmpeg") or "ffmpeg"
 
 COOKIE_PATH = os.path.join(
-    os.path.dirname(os.path.abspath(__file__)),
+    BASE_DIR,
     "cookies.txt"
 )
 
+DENO_PATH = os.path.join(
+    BASE_DIR,
+    "deno"
+)
 
-print("=" * 60)
+NODE_PATH = shutil.which("node")
 
-if os.path.isfile(COOKIE_PATH):
+if not NODE_PATH:
+    possible_nodes = [
+        "/usr/bin/node",
+        "/usr/local/bin/node",
+        "/home/container/node",
+    ]
+
+    for path in possible_nodes:
+        if os.path.isfile(path):
+            NODE_PATH = path
+            break
+
+
+# ============================================================
+# COOKIE STATUS
+# ============================================================
+
+COOKIE_EXISTS = os.path.isfile(COOKIE_PATH)
+
+if COOKIE_EXISTS:
+    print("=" * 60)
     print("🍪 Cookie file: FOUND")
     print(f"🍪 Cookie path: {COOKIE_PATH}")
 else:
+    print("=" * 60)
     print("⚠️ Cookie file not found")
 
-print(f"🎧 FFmpeg: {FFMPEG_PATH}")
+
+# ============================================================
+# JAVASCRIPT RUNTIME
+# ============================================================
+
+JS_RUNTIME = None
+
+if NODE_PATH:
+
+    try:
+        result = subprocess.run(
+            [
+                NODE_PATH,
+                "--version"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=5
+        )
+
+        node_version = result.stdout.strip()
+
+        print(
+            f"🟢 Node.js detected: {node_version}"
+        )
+
+        JS_RUNTIME = (
+            f"node:{NODE_PATH}"
+        )
+
+    except Exception as error:
+
+        print(
+            f"⚠️ Node.js detected but unusable: {error}"
+        )
+
+
+if JS_RUNTIME is None:
+
+    if os.path.isfile(DENO_PATH):
+
+        try:
+
+            os.chmod(
+                DENO_PATH,
+                0o755
+            )
+
+        except Exception:
+            pass
+
+        JS_RUNTIME = (
+            f"deno:{DENO_PATH}"
+        )
+
+        print(
+            f"🟡 Deno detected: {DENO_PATH}"
+        )
+
+    else:
+
+        system_deno = shutil.which(
+            "deno"
+        )
+
+        if system_deno:
+
+            JS_RUNTIME = (
+                f"deno:{system_deno}"
+            )
+
+            print(
+                f"🟡 System Deno detected: {system_deno}"
+            )
+
+
+if JS_RUNTIME:
+
+    print(
+        f"⚙️ JS Runtime: {JS_RUNTIME}"
+    )
+
+else:
+
+    print(
+        "⚠️ No JavaScript runtime detected"
+    )
+
+
+print(
+    f"🎧 FFmpeg: {FFMPEG_PATH}"
+)
 
 print("=" * 60)
 
@@ -73,52 +203,102 @@ print("=" * 60)
 # ============================================================
 
 queues = {}
+
 current_song = {}
+
 loop_mode = {}
+
 music_locks = {}
 
+play_generation = {}
+
 
 # ============================================================
-# YT-DLP OPTIONS
+# YOUTUBE SETTINGS
 # ============================================================
 
-YTDL_OPTIONS = {
+# ใช้ default client ของ yt-dlp เป็นหลัก
+#
+# web_embedded เป็น fallback ที่ไม่ต้อง login
+# และไม่ควรบังคับ android เพราะ Android client
+# ไม่ได้แก้ปัญหา Bot Check ได้ทุกกรณี
+#
+# yt-dlp ปัจจุบันมี EJS challenge system
+# ซึ่งต้องใช้ JavaScript runtime
+#
+# หาก Node มีในเครื่อง -> ใช้ Node
+# หากไม่มี -> ใช้ Deno
+#
+# อ้างอิงแนวทางปัจจุบันของ yt-dlp:
+# EJS + supported JS runtime
+#
+# ============================================================
+
+YOUTUBE_CLIENT_CONFIGS = [
+
+    {
+        "name": "default+web_embedded",
+        "player_client": "default,web_embedded",
+    },
+
+    {
+        "name": "web_embedded",
+        "player_client": "web_embedded",
+    },
+
+    {
+        "name": "android_vr",
+        "player_client": "android_vr",
+    },
+]
+
+
+# ============================================================
+# BASE YT-DLP OPTIONS
+# ============================================================
+
+YTDL_BASE_OPTIONS = {
+
     "quiet": False,
+
     "no_warnings": False,
 
     "noplaylist": True,
 
-    "default_search": "ytsearch1",
+    "default_search": "ytsearch",
 
-    # ไม่ใช้ remote_components
-    # เพื่อไม่ให้ Hosting ต้องรัน Deno EJS
-    #
-    # ถ้า YouTube ไม่มี format ที่เล่นได้
-    # จะให้ yt-dlp แจ้ง error แล้ว fallback ต่อ
-    "format": "bestaudio/best",
+    # เลือก audio ก่อน
+    "format": (
+        "bestaudio[ext=webm]/"
+        "bestaudio[ext=m4a]/"
+        "bestaudio/"
+        "best"
+    ),
 
-    "socket_timeout": 20,
+    "socket_timeout": 30,
 
     "retries": 2,
+
     "fragment_retries": 2,
+
     "extractor_retries": 2,
+
+    "file_access_retries": 2,
 
     "skip_unavailable_fragments": True,
 
     "nocheckcertificate": True,
 
-    "geo_bypass": True,
+    "extract_flat": False,
 
-    "http_headers": {
-        "User-Agent": (
-            "Mozilla/5.0 "
-            "(Windows NT 10.0; Win64; x64) "
-            "AppleWebKit/537.36 "
-            "(KHTML, like Gecko) "
-            "Chrome/151.0.0.0 Safari/537.36"
-        ),
-        "Accept-Language": "en-US,en;q=0.9",
-    },
+    # ไม่เก็บไฟล์ลง disk
+    "cachedir": False,
+
+    # ลดปัญหาเกี่ยวกับ encoding
+    "encoding": "utf-8",
+
+    # ไม่ download video
+    "outtmpl": "-",
 }
 
 
@@ -127,13 +307,18 @@ YTDL_OPTIONS = {
 # ============================================================
 
 FFMPEG_OPTIONS = {
+
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
         "-reconnect_delay_max 5 "
         "-nostdin"
     ),
-    "options": "-vn",
+
+    "options": (
+        "-vn "
+        "-loglevel warning"
+    ),
 }
 
 
@@ -144,6 +329,7 @@ FFMPEG_OPTIONS = {
 def get_queue(guild_id):
 
     if guild_id not in queues:
+
         queues[guild_id] = []
 
     return queues[guild_id]
@@ -156,7 +342,10 @@ def get_queue(guild_id):
 def get_lock(guild_id):
 
     if guild_id not in music_locks:
-        music_locks[guild_id] = asyncio.Lock()
+
+        music_locks[guild_id] = (
+            asyncio.Lock()
+        )
 
     return music_locks[guild_id]
 
@@ -171,22 +360,40 @@ def format_duration(seconds):
         return "ไม่ทราบ"
 
     try:
+
         seconds = int(seconds)
-    except (TypeError, ValueError):
+
+    except (
+        TypeError,
+        ValueError
+    ):
+
         return "ไม่ทราบ"
 
     hours = seconds // 3600
-    minutes = (seconds % 3600) // 60
+
+    minutes = (
+        seconds % 3600
+    ) // 60
+
     secs = seconds % 60
 
     if hours > 0:
-        return f"{hours}:{minutes:02d}:{secs:02d}"
 
-    return f"{minutes}:{secs:02d}"
+        return (
+            f"{hours}:"
+            f"{minutes:02d}:"
+            f"{secs:02d}"
+        )
+
+    return (
+        f"{minutes}:"
+        f"{secs:02d}"
+    )
 
 
 # ============================================================
-# URL CHECK
+# YOUTUBE URL
 # ============================================================
 
 def is_youtube_url(text):
@@ -204,80 +411,84 @@ def is_youtube_url(text):
 
 
 # ============================================================
+# NORMALIZE QUERY
+# ============================================================
+
+def normalize_query(query):
+
+    query = query.strip()
+
+    if is_youtube_url(query):
+
+        return query
+
+    return (
+        f"ytsearch1:{query}"
+    )
+
+
+# ============================================================
 # BUILD YT-DLP OPTIONS
 # ============================================================
 
-def build_ytdl_options(use_cookie=True):
+def build_ytdl_options(
+    client_config,
+    use_cookie
+):
 
-    options = YTDL_OPTIONS.copy()
+    options = YTDL_BASE_OPTIONS.copy()
 
-    options["http_headers"] = YTDL_OPTIONS[
-        "http_headers"
-    ].copy()
+    options["extractor_args"] = {
+
+        "youtube": {
+
+            "player_client": (
+                client_config[
+                    "player_client"
+                ]
+            )
+        }
+    }
 
     # --------------------------------------------------------
-    # Cookie ใช้เป็น fallback เท่านั้น
+    # JAVASCRIPT RUNTIME
+    # --------------------------------------------------------
+
+    if JS_RUNTIME:
+
+        options[
+            "js_runtimes"
+        ] = {
+
+            JS_RUNTIME.split(":")[0]:
+                JS_RUNTIME.split(":", 1)[1]
+        }
+
+    # --------------------------------------------------------
+    # EJS
+    # --------------------------------------------------------
+
+    # yt-dlp[default] ติดตั้ง yt-dlp-ejs มาแล้ว
+    #
+    # ไม่เปิด remote npm โดยไม่จำเป็น
+    # เพราะ Deno บน hosting ของป๊อปถูก kill -9
+    #
+    # --------------------------------------------------------
+
+    # --------------------------------------------------------
+    # COOKIE
     # --------------------------------------------------------
 
     if (
         use_cookie
-        and os.path.isfile(COOKIE_PATH)
+        and COOKIE_EXISTS
     ):
 
-        options["cookiefile"] = COOKIE_PATH
+        options[
+            "cookiefile"
+        ] = COOKIE_PATH
 
     return options
-
-
-# ============================================================
-# EXTRACT INFO
-# ============================================================
-
-def extract_with_ytdlp(query, use_cookie=True):
-
-    options = build_ytdl_options(
-        use_cookie=use_cookie
-    )
-
-    print(
-        f"[YouTube] Extracting: {query}"
-    )
-
-    print(
-        f"[YouTube] Cookie: "
-        f"{'ON' if use_cookie and os.path.isfile(COOKIE_PATH) else 'OFF'}"
-    )
-
-    with yt_dlp.YoutubeDL(
-        options
-    ) as ytdl:
-
-        info = ytdl.extract_info(
-            query,
-            download=False
-        )
-
-        if not info:
-            return None
-
-        # ----------------------------------------------------
-        # SEARCH
-        # ----------------------------------------------------
-
-        if "entries" in info:
-
-            entries = [
-                entry
-                for entry in info.get("entries", [])
-                if entry
-            ]
-
-            if not entries:
-                return None
-
-            info = entries[0]
-
-        return info
 
 
 # ============================================================
@@ -293,21 +504,21 @@ def choose_stream(info):
     # Direct URL
     # --------------------------------------------------------
 
-    direct_url = info.get("url")
+    direct_url = info.get(
+        "url"
+    )
 
     if direct_url:
-
-        print(
-            "[YouTube] Direct stream URL found"
-        )
-
         return direct_url
 
     # --------------------------------------------------------
     # Formats
     # --------------------------------------------------------
 
-    formats = info.get("formats") or []
+    formats = (
+        info.get("formats")
+        or []
+    )
 
     if not formats:
         return None
@@ -325,7 +536,9 @@ def choose_stream(info):
         if not url:
             continue
 
-        acodec = fmt.get("acodec")
+        acodec = fmt.get(
+            "acodec"
+        )
 
         if not acodec:
             continue
@@ -333,64 +546,71 @@ def choose_stream(info):
         if acodec == "none":
             continue
 
-        audio_formats.append(fmt)
+        audio_formats.append(
+            fmt
+        )
 
     if audio_formats:
 
+        def score(fmt):
+
+            abr = (
+                fmt.get("abr")
+                or 0
+            )
+
+            tbr = (
+                fmt.get("tbr")
+                or 0
+            )
+
+            return (
+                float(abr),
+                float(tbr)
+            )
+
         audio_formats.sort(
-            key=lambda x: (
-                x.get("abr") or 0,
-                x.get("tbr") or 0
-            ),
+            key=score,
             reverse=True
         )
 
-        selected = audio_formats[0]
-
-        print(
-            "[YouTube] Audio format selected: "
-            f"{selected.get('format_id')}"
+        return (
+            audio_formats[0]
+            .get("url")
         )
 
-        return selected.get("url")
-
     # --------------------------------------------------------
-    # Any playable format
+    # Fallback
     # --------------------------------------------------------
 
-    playable = [
+    valid_formats = [
+
         fmt
         for fmt in formats
         if fmt.get("url")
     ]
 
-    if playable:
+    if not valid_formats:
+        return None
 
-        playable.sort(
-            key=lambda x: (
-                x.get("tbr") or 0,
-                x.get("height") or 0
-            ),
-            reverse=True
-        )
+    valid_formats.sort(
 
-        return playable[0].get("url")
+        key=lambda fmt: (
 
-    return None
+            fmt.get("tbr")
+            or 0,
 
+            fmt.get("height")
+            or 0
+        ),
 
-# ============================================================
-# NORMALIZE QUERY
-# ============================================================
+        reverse=True
+    )
 
-def normalize_query(query):
-
-    query = query.strip()
-
-    if is_youtube_url(query):
-        return query
-
-    return f"ytsearch1:{query}"
+    return (
+        valid_formats[0]
+        .get("url")
+    )
 
 
 # ============================================================
@@ -399,172 +619,275 @@ def normalize_query(query):
 
 async def extract_song(query):
 
-    loop = asyncio.get_running_loop()
+    loop = (
+        asyncio.get_running_loop()
+    )
 
     def extract():
 
-        search_query = normalize_query(
-            query
+        search_query = (
+            normalize_query(query)
         )
 
         last_error = None
 
         # ====================================================
-        # ATTEMPT 1
-        # Cookie
+        # COOKIE FIRST
         # ====================================================
 
-        if os.path.isfile(COOKIE_PATH):
+        attempts = []
 
-            try:
+        if COOKIE_EXISTS:
+
+            attempts.append(
+                True
+            )
+
+        attempts.append(
+            False
+        )
+
+        # ป้องกัน duplicate
+        attempts = list(
+            dict.fromkeys(attempts)
+        )
+
+        # ====================================================
+        # CLIENTS
+        # ====================================================
+
+        for use_cookie in attempts:
+
+            cookie_text = (
+                "ON"
+                if use_cookie
+                else "OFF"
+            )
+
+            for client_config in (
+                YOUTUBE_CLIENT_CONFIGS
+            ):
+
+                client_name = (
+                    client_config["name"]
+                )
 
                 print(
-                    "[YouTube] Attempt 1: with cookie"
+                    "=" * 60
                 )
 
-                info = extract_with_ytdlp(
-                    search_query,
-                    use_cookie=True
+                print(
+                    "[YouTube] "
+                    f"Client: {client_name}"
                 )
 
-                if info:
+                print(
+                    "[YouTube] "
+                    f"Cookie: {cookie_text}"
+                )
 
-                    stream_url = choose_stream(
-                        info
+                print(
+                    "[YouTube] "
+                    f"Extracting: {search_query}"
+                )
+
+                options = (
+                    build_ytdl_options(
+                        client_config,
+                        use_cookie
                     )
+                )
 
-                    if stream_url:
+                try:
 
-                        song = {
-                            "title": info.get(
-                                "title",
-                                "Unknown Title"
-                            ),
+                    with yt_dlp.YoutubeDL(
+                        options
+                    ) as ytdl:
 
-                            "url": stream_url,
+                        info = (
+                            ytdl.extract_info(
+                                search_query,
+                                download=False
+                            )
+                        )
 
-                            "webpage_url": info.get(
-                                "webpage_url",
-                                query
-                            ),
-
-                            "duration": info.get(
-                                "duration",
-                                0
-                            ),
-
-                            "thumbnail": info.get(
-                                "thumbnail"
-                            ),
-
-                            "uploader": info.get(
-                                "uploader",
-                                "Unknown"
-                            ),
-                        }
+                    if not info:
 
                         print(
                             "[YouTube] "
-                            "Extraction successful"
+                            "Empty result"
                         )
+
+                        continue
+
+                    # ------------------------------------------------
+                    # SEARCH RESULT
+                    # ------------------------------------------------
+
+                    if "entries" in info:
+
+                        entries = [
+
+                            entry
+
+                            for entry
+                            in (
+                                info.get(
+                                    "entries",
+                                    []
+                                )
+                                or []
+                            )
+
+                            if entry
+                        ]
+
+                        if not entries:
+
+                            print(
+                                "[YouTube] "
+                                "No search result"
+                            )
+
+                            continue
+
+                        info = entries[0]
+
+                    # ------------------------------------------------
+                    # STREAM
+                    # ------------------------------------------------
+
+                    stream_url = (
+                        choose_stream(info)
+                    )
+
+                    if not stream_url:
 
                         print(
-                            f"[YouTube] "
-                            f"Title: {song['title']}"
+                            "[YouTube] "
+                            "No playable audio stream"
                         )
 
-                        return song
-
-            except Exception as error:
-
-                last_error = error
-
-                print(
-                    "[YouTube] Cookie attempt failed:"
-                )
-
-                print(error)
-
-        # ====================================================
-        # ATTEMPT 2
-        # Without cookie
-        # ====================================================
-
-        try:
-
-            print(
-                "[YouTube] Attempt 2: without cookie"
-            )
-
-            info = extract_with_ytdlp(
-                search_query,
-                use_cookie=False
-            )
-
-            if info:
-
-                stream_url = choose_stream(
-                    info
-                )
-
-                if stream_url:
+                        continue
 
                     song = {
-                        "title": info.get(
-                            "title",
-                            "Unknown Title"
+
+                        "title": (
+                            info.get(
+                                "title",
+                                "Unknown Title"
+                            )
                         ),
 
                         "url": stream_url,
 
-                        "webpage_url": info.get(
-                            "webpage_url",
-                            query
+                        "webpage_url": (
+                            info.get(
+                                "webpage_url",
+                                query
+                            )
                         ),
 
-                        "duration": info.get(
-                            "duration",
-                            0
+                        "duration": (
+                            info.get(
+                                "duration",
+                                0
+                            )
                         ),
 
-                        "thumbnail": info.get(
-                            "thumbnail"
+                        "thumbnail": (
+                            info.get(
+                                "thumbnail"
+                            )
                         ),
 
-                        "uploader": info.get(
-                            "uploader",
-                            "Unknown"
+                        "uploader": (
+                            info.get(
+                                "uploader",
+                                "Unknown"
+                            )
                         ),
                     }
 
                     print(
-                        "[YouTube] "
+                        "=" * 60
+                    )
+
+                    print(
+                        "✅ [YouTube] "
                         "Extraction successful"
                     )
 
                     print(
-                        f"[YouTube] "
-                        f"Title: {song['title']}"
+                        f"🎵 Title: "
+                        f"{song['title']}"
+                    )
+
+                    print(
+                        f"⏱️ Duration: "
+                        f"{format_duration(song['duration'])}"
+                    )
+
+                    print(
+                        f"👤 Uploader: "
+                        f"{song['uploader']}"
+                    )
+
+                    print(
+                        "=" * 60
                     )
 
                     return song
 
-        except Exception as error:
+                except Exception as error:
 
-            last_error = error
+                    last_error = error
 
-            print(
-                "[YouTube] "
-                "No-cookie attempt failed:"
-            )
+                    print(
+                        "[YouTube] "
+                        f"{client_name} failed:"
+                    )
 
-            print(error)
+                    print(
+                        error
+                    )
+
+                    error_text = str(
+                        error
+                    ).lower()
+
+                    # ------------------------------------------------
+                    # Cookie invalid
+                    # ------------------------------------------------
+
+                    if (
+                        use_cookie
+                        and (
+                            "cookies are no longer valid"
+                            in error_text
+                            or
+                            "cookie" in error_text
+                            and "invalid"
+                            in error_text
+                        )
+                    ):
+
+                        print(
+                            "⚠️ YouTube cookie "
+                            "appears invalid."
+                        )
+
+                        # ไป no-cookie ต่อ
+                        break
+
+                    continue
 
         # ====================================================
-        # FAILED
+        # ALL FAILED
         # ====================================================
 
         if last_error:
+
             raise last_error
 
         return None
@@ -585,27 +908,42 @@ async def send_now_playing(
 ):
 
     embed = discord.Embed(
+
         title="🎵 กำลังเล่นเพลง",
 
         description=(
             f"**{song['title']}**\n\n"
-            f"⏱️ {format_duration(song['duration'])}\n"
-            f"👤 {song['uploader']}"
+            f"⏱️ "
+            f"{format_duration(song['duration'])}\n"
+            f"👤 "
+            f"{song['uploader']}"
         )
     )
 
-    if song.get("webpage_url"):
+    if song.get(
+        "webpage_url"
+    ):
 
         embed.add_field(
+
             name="🔗 YouTube",
-            value=song["webpage_url"],
+
+            value=song[
+                "webpage_url"
+            ],
+
             inline=False
         )
 
-    if song.get("thumbnail"):
+    if song.get(
+        "thumbnail"
+    ):
 
         embed.set_thumbnail(
-            url=song["thumbnail"]
+
+            url=song[
+                "thumbnail"
+            ]
         )
 
     try:
@@ -617,7 +955,8 @@ async def send_now_playing(
     except Exception as error:
 
         print(
-            f"[MESSAGE ERROR] {error}"
+            "[MESSAGE ERROR]",
+            error
         )
 
 
@@ -625,12 +964,17 @@ async def send_now_playing(
 # FIND TEXT CHANNEL
 # ============================================================
 
-def find_text_channel(guild):
+def get_text_channel(
+    guild
+):
 
     if guild.system_channel:
 
-        permissions = guild.system_channel.permissions_for(
-            guild.me
+        permissions = (
+            guild.system_channel
+            .permissions_for(
+                guild.me
+            )
         )
 
         if permissions.send_messages:
@@ -639,8 +983,10 @@ def find_text_channel(guild):
 
     for channel in guild.text_channels:
 
-        permissions = channel.permissions_for(
-            guild.me
+        permissions = (
+            channel.permissions_for(
+                guild.me
+            )
         )
 
         if permissions.send_messages:
@@ -654,11 +1000,15 @@ def find_text_channel(guild):
 # PLAY NEXT
 # ============================================================
 
-async def play_next(guild):
+async def play_next(
+    guild
+):
 
     guild_id = guild.id
 
-    voice = guild.voice_client
+    voice = (
+        guild.voice_client
+    )
 
     if voice is None:
         return
@@ -696,28 +1046,38 @@ async def play_next(guild):
 
             return
 
-        song = queue.pop(0)
+        song = queue.pop(
+            0
+        )
 
         current_song[
             guild_id
         ] = song
 
     # --------------------------------------------------------
-    # FFMPEG
+    # SOURCE
     # --------------------------------------------------------
 
     try:
 
-        source = discord.FFmpegPCMAudio(
-            song["url"],
-            executable=FFMPEG_PATH,
-            **FFMPEG_OPTIONS
+        source = (
+            discord.FFmpegPCMAudio(
+
+                song["url"],
+
+                executable=(
+                    FFMPEG_PATH
+                ),
+
+                **FFMPEG_OPTIONS
+            )
         )
 
     except Exception as error:
 
         print(
-            f"[FFMPEG ERROR] {error}"
+            "[FFMPEG ERROR]",
+            error
         )
 
         await play_next(
@@ -725,6 +1085,21 @@ async def play_next(guild):
         )
 
         return
+
+    # --------------------------------------------------------
+    # GENERATION
+    # --------------------------------------------------------
+
+    generation = (
+        play_generation.get(
+            guild_id,
+            0
+        ) + 1
+    )
+
+    play_generation[
+        guild_id
+    ] = generation
 
     # --------------------------------------------------------
     # CALLBACK
@@ -735,21 +1110,37 @@ async def play_next(guild):
         if error:
 
             print(
-                f"[PLAYER ERROR] {error}"
+                "[PLAYER ERROR]",
+                error
             )
+
+        async def continue_playing():
+
+            try:
+
+                await play_next(
+                    guild
+                )
+
+            except Exception as callback_error:
+
+                print(
+                    "[CALLBACK ERROR]",
+                    callback_error
+                )
 
         try:
 
             asyncio.run_coroutine_threadsafe(
-                play_next(guild),
+                continue_playing(),
                 bot.loop
             )
 
         except Exception as callback_error:
 
             print(
-                f"[CALLBACK ERROR] "
-                f"{callback_error}"
+                "[CALLBACK SCHEDULE ERROR]",
+                callback_error
             )
 
     # --------------------------------------------------------
@@ -770,7 +1161,8 @@ async def play_next(guild):
     except Exception as error:
 
         print(
-            f"[PLAY ERROR] {error}"
+            "[PLAY ERROR]",
+            error
         )
 
         await play_next(
@@ -783,7 +1175,7 @@ async def play_next(guild):
     # MESSAGE
     # --------------------------------------------------------
 
-    channel = find_text_channel(
+    channel = get_text_channel(
         guild
     )
 
@@ -799,7 +1191,9 @@ async def play_next(guild):
 # ENSURE VOICE
 # ============================================================
 
-async def ensure_voice(ctx):
+async def ensure_voice(
+    ctx
+):
 
     if ctx.author.voice is None:
 
@@ -809,16 +1203,22 @@ async def ensure_voice(ctx):
 
         return None
 
-    channel = ctx.author.voice.channel
+    channel = (
+        ctx.author.voice.channel
+    )
 
-    voice = ctx.guild.voice_client
+    voice = (
+        ctx.guild.voice_client
+    )
 
     try:
 
         if voice is None:
 
             voice = await channel.connect(
+
                 timeout=30,
+
                 reconnect=True
             )
 
@@ -833,7 +1233,8 @@ async def ensure_voice(ctx):
     except Exception as error:
 
         print(
-            f"[VOICE ERROR] {error}"
+            "[VOICE ERROR]",
+            error
         )
 
         await ctx.send(
@@ -875,12 +1276,21 @@ async def on_ready():
     )
 
     print(
-        f"🍪 Cookies: "
-        f"{COOKIE_PATH if os.path.isfile(COOKIE_PATH) else 'NOT FOUND'}"
+        "🍪 Cookies: "
+        + (
+            COOKIE_PATH
+            if COOKIE_EXISTS
+            else "NOT FOUND"
+        )
     )
 
     print(
         f"FFmpeg   : {FFMPEG_PATH}"
+    )
+
+    print(
+        f"JS       : "
+        f"{JS_RUNTIME or 'NOT FOUND'}"
     )
 
     print("=" * 60)
@@ -897,7 +1307,9 @@ async def on_ready():
 # ============================================================
 
 @bot.command()
-async def join(ctx):
+async def join(
+    ctx
+):
 
     voice = await ensure_voice(
         ctx
@@ -906,7 +1318,9 @@ async def join(ctx):
     if voice:
 
         await ctx.send(
-            f"🎧 เข้าห้อง **{voice.channel.name}** แล้วครับ"
+            f"🎧 เข้าห้อง "
+            f"**{voice.channel.name}** "
+            f"แล้วครับ"
         )
 
 
@@ -915,9 +1329,13 @@ async def join(ctx):
 # ============================================================
 
 @bot.command()
-async def leave(ctx):
+async def leave(
+    ctx
+):
 
-    voice = ctx.guild.voice_client
+    voice = (
+        ctx.guild.voice_client
+    )
 
     if voice is None:
 
@@ -929,7 +1347,9 @@ async def leave(ctx):
 
     guild_id = ctx.guild.id
 
-    queues[guild_id] = []
+    queues[
+        guild_id
+    ] = []
 
     current_song.pop(
         guild_id,
@@ -941,11 +1361,17 @@ async def leave(ctx):
         None
     )
 
+    play_generation.pop(
+        guild_id,
+        None
+    )
+
     try:
 
         await voice.disconnect()
 
     except Exception:
+
         pass
 
     await ctx.send(
@@ -967,13 +1393,21 @@ async def play(
     if not query:
 
         await ctx.send(
+
             "❌ ใช้แบบนี้ครับ\n\n"
+
             "`!play ชื่อเพลง`\n"
+
             "หรือ\n"
+
             "`!play https://youtube.com/...`"
         )
 
         return
+
+    # --------------------------------------------------------
+    # VOICE
+    # --------------------------------------------------------
 
     voice = await ensure_voice(
         ctx
@@ -982,12 +1416,17 @@ async def play(
     if voice is None:
         return
 
+    # --------------------------------------------------------
+    # SEARCH
+    # --------------------------------------------------------
+
     async with get_lock(
         ctx.guild.id
     ):
 
         loading = await ctx.send(
-            f"🔎 กำลังค้นหา **{query}** ..."
+            f"🔎 กำลังค้นหา "
+            f"**{query}** ..."
         )
 
         try:
@@ -999,17 +1438,33 @@ async def play(
         except Exception as error:
 
             print(
+                "=" * 60
+            )
+
+            print(
                 "[YT-DLP ERROR]"
             )
 
-            print(error)
+            print(
+                error
+            )
+
+            print(
+                "=" * 60
+            )
 
             try:
 
                 await loading.edit(
+
                     content=(
-                        "❌ YouTube ไม่สามารถส่ง "
-                        "Audio ที่เล่นได้ครับ"
+                        "❌ YouTube "
+                        "ไม่สามารถส่ง Audio "
+                        "สำหรับเพลงนี้ได้ครับ\n\n"
+
+                        "ปัญหาอยู่ที่ YouTube "
+                        "EJS / Bot Check "
+                        "ไม่ใช่ Discord Voice ครับ"
                     )
                 )
 
@@ -1018,17 +1473,27 @@ async def play(
 
             return
 
+        # ----------------------------------------------------
+        # NO SONG
+        # ----------------------------------------------------
+
         if (
             song is None
             or not song.get("url")
         ):
 
-            await loading.edit(
-                content=(
-                    "❌ ไม่พบ Audio "
-                    "ที่สามารถเล่นได้ครับ"
+            try:
+
+                await loading.edit(
+
+                    content=(
+                        "❌ ไม่พบ Audio "
+                        "ที่สามารถเล่นได้ครับ"
+                    )
                 )
-            )
+
+            except Exception:
+                pass
 
             return
 
@@ -1037,7 +1502,7 @@ async def play(
         )
 
         # ----------------------------------------------------
-        # QUEUE
+        # CURRENTLY PLAYING
         # ----------------------------------------------------
 
         if (
@@ -1050,17 +1515,22 @@ async def play(
             )
 
             await loading.edit(
+
                 content=(
-                    f"📋 เพิ่มเข้าคิวแล้วครับ\n\n"
+
+                    "📋 เพิ่มเข้าคิวแล้วครับ\n\n"
+
                     f"🎵 **{song['title']}**\n"
-                    f"📌 ลำดับที่ `{len(queue)}`"
+
+                    f"📌 ลำดับที่ "
+                    f"`{len(queue)}`"
                 )
             )
 
             return
 
         # ----------------------------------------------------
-        # PLAY
+        # PLAY NOW
         # ----------------------------------------------------
 
         current_song[
@@ -1069,19 +1539,28 @@ async def play(
 
         try:
 
-            source = discord.FFmpegPCMAudio(
-                song["url"],
-                executable=FFMPEG_PATH,
-                **FFMPEG_OPTIONS
+            source = (
+                discord.FFmpegPCMAudio(
+
+                    song["url"],
+
+                    executable=(
+                        FFMPEG_PATH
+                    ),
+
+                    **FFMPEG_OPTIONS
+                )
             )
 
         except Exception as error:
 
             print(
-                f"[FFMPEG ERROR] {error}"
+                "[FFMPEG ERROR]",
+                error
             )
 
             await loading.edit(
+
                 content=(
                     "❌ ไม่สามารถเปิด Audio ได้ครับ"
                 )
@@ -1098,21 +1577,39 @@ async def play(
             if error:
 
                 print(
-                    f"[PLAYER ERROR] {error}"
+                    "[PLAYER ERROR]",
+                    error
                 )
+
+            async def next_song():
+
+                try:
+
+                    await play_next(
+                        ctx.guild
+                    )
+
+                except Exception as next_error:
+
+                    print(
+                        "[CALLBACK ERROR]",
+                        next_error
+                    )
 
             try:
 
                 asyncio.run_coroutine_threadsafe(
-                    play_next(ctx.guild),
+
+                    next_song(),
+
                     bot.loop
                 )
 
             except Exception as callback_error:
 
                 print(
-                    f"[CALLBACK ERROR] "
-                    f"{callback_error}"
+                    "[CALLBACK SCHEDULE ERROR]",
+                    callback_error
                 )
 
         # ----------------------------------------------------
@@ -1122,17 +1619,21 @@ async def play(
         try:
 
             voice.play(
+
                 source,
+
                 after=after_playing
             )
 
         except Exception as error:
 
             print(
-                f"[PLAY ERROR] {error}"
+                "[PLAY ERROR]",
+                error
             )
 
             await loading.edit(
+
                 content=(
                     "❌ ไม่สามารถเล่นเพลงได้ครับ"
                 )
@@ -1145,6 +1646,7 @@ async def play(
             await loading.delete()
 
         except Exception:
+
             pass
 
         await send_now_playing(
@@ -1158,9 +1660,13 @@ async def play(
 # ============================================================
 
 @bot.command()
-async def skip(ctx):
+async def skip(
+    ctx
+):
 
-    voice = ctx.guild.voice_client
+    voice = (
+        ctx.guild.voice_client
+    )
 
     if voice is None:
 
@@ -1190,9 +1696,13 @@ async def skip(ctx):
 # ============================================================
 
 @bot.command()
-async def pause(ctx):
+async def pause(
+    ctx
+):
 
-    voice = ctx.guild.voice_client
+    voice = (
+        ctx.guild.voice_client
+    )
 
     if voice is None:
 
@@ -1222,9 +1732,13 @@ async def pause(ctx):
 # ============================================================
 
 @bot.command()
-async def resume(ctx):
+async def resume(
+    ctx
+):
 
-    voice = ctx.guild.voice_client
+    voice = (
+        ctx.guild.voice_client
+    )
 
     if voice is None:
 
@@ -1254,9 +1768,13 @@ async def resume(ctx):
 # ============================================================
 
 @bot.command()
-async def stop(ctx):
+async def stop(
+    ctx
+):
 
-    voice = ctx.guild.voice_client
+    voice = (
+        ctx.guild.voice_client
+    )
 
     if voice is None:
 
@@ -1268,7 +1786,9 @@ async def stop(ctx):
 
     guild_id = ctx.guild.id
 
-    queues[guild_id] = []
+    queues[
+        guild_id
+    ] = []
 
     current_song.pop(
         guild_id,
@@ -1276,6 +1796,11 @@ async def stop(ctx):
     )
 
     loop_mode.pop(
+        guild_id,
+        None
+    )
+
+    play_generation.pop(
         guild_id,
         None
     )
@@ -1296,8 +1821,12 @@ async def stop(ctx):
 # QUEUE
 # ============================================================
 
-@bot.command(name="queue")
-async def show_queue(ctx):
+@bot.command(
+    name="queue"
+)
+async def show_queue(
+    ctx
+):
 
     queue = get_queue(
         ctx.guild.id
@@ -1325,8 +1854,13 @@ async def show_queue(ctx):
     if current:
 
         embed.add_field(
+
             name="▶️ กำลังเล่น",
-            value=current["title"],
+
+            value=current[
+                "title"
+            ],
+
             inline=False
         )
 
@@ -1335,11 +1869,14 @@ async def show_queue(ctx):
         text = ""
 
         for index, song in enumerate(
+
             queue[:10],
+
             start=1
         ):
 
             text += (
+
                 f"`{index}.` "
                 f"{song['title']}\n"
             )
@@ -1347,13 +1884,17 @@ async def show_queue(ctx):
         if len(queue) > 10:
 
             text += (
+
                 f"\n... และอีก "
                 f"{len(queue) - 10} เพลง"
             )
 
         embed.add_field(
+
             name="📋 คิวเพลง",
+
             value=text,
+
             inline=False
         )
 
@@ -1367,16 +1908,22 @@ async def show_queue(ctx):
 # ============================================================
 
 @bot.command()
-async def loop(ctx):
+async def loop(
+    ctx
+):
 
     guild_id = ctx.guild.id
 
-    loop_mode[guild_id] = not loop_mode.get(
+    loop_mode[
+        guild_id
+    ] = not loop_mode.get(
         guild_id,
         False
     )
 
-    if loop_mode[guild_id]:
+    if loop_mode[
+        guild_id
+    ]:
 
         await ctx.send(
             "🔁 เปิด Loop เพลงปัจจุบันแล้วครับ"
@@ -1394,7 +1941,9 @@ async def loop(ctx):
 # ============================================================
 
 @bot.command()
-async def nowplaying(ctx):
+async def nowplaying(
+    ctx
+):
 
     song = current_song.get(
         ctx.guild.id
@@ -1418,17 +1967,28 @@ async def nowplaying(ctx):
 # HELP
 # ============================================================
 
-@bot.command(name="help")
-async def help_command(ctx):
+@bot.command(
+    name="help"
+)
+async def help_command(
+    ctx
+):
 
     embed = discord.Embed(
+
         title="🎵 DJ Pop Music Bot",
-        description="คำสั่งทั้งหมดของ DJ Pop"
+
+        description=(
+            "คำสั่งทั้งหมดของ DJ Pop"
+        )
     )
 
     embed.add_field(
+
         name="🎧 Music",
+
         value=(
+
             "`!play <เพลง>` - เล่นเพลง\n"
             "`!skip` - ข้ามเพลง\n"
             "`!pause` - พักเพลง\n"
@@ -1438,15 +1998,20 @@ async def help_command(ctx):
             "`!nowplaying` - เพลงปัจจุบัน\n"
             "`!loop` - เปิด/ปิด Loop"
         ),
+
         inline=False
     )
 
     embed.add_field(
+
         name="🔊 Voice",
+
         value=(
+
             "`!join` - เข้าห้องเสียง\n"
             "`!leave` - ออกจากห้องเสียง"
         ),
+
         inline=False
     )
 
@@ -1469,6 +2034,7 @@ async def on_command_error(
         error,
         commands.CommandNotFound
     ):
+
         return
 
     if isinstance(
@@ -1477,8 +2043,11 @@ async def on_command_error(
     ):
 
         await ctx.send(
+
             "❌ ข้อมูลไม่ครบครับ\n"
-            "ใช้ `!help` เพื่อดูวิธีใช้"
+
+            "ใช้ `!help` "
+            "เพื่อดูวิธีใช้"
         )
 
         return
@@ -1495,6 +2064,15 @@ async def on_command_error(
         print(
             error.original
         )
+
+        try:
+
+            await ctx.send(
+                "❌ เกิดข้อผิดพลาดระหว่างทำงานครับ"
+            )
+
+        except Exception:
+            pass
 
         return
 
@@ -1513,4 +2091,6 @@ if __name__ == "__main__":
         "🚀 Starting DJ Pop Bot..."
     )
 
-    bot.run(TOKEN)
+    bot.run(
+        TOKEN
+    )
