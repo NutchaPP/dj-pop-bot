@@ -49,7 +49,10 @@ bot = commands.Bot(
 
 FFMPEG_PATH = shutil.which("ffmpeg") or "ffmpeg"
 
-COOKIE_PATH = "/home/container/cookie.txt"
+COOKIE_PATH = os.path.join(
+    os.path.dirname(os.path.abspath(__file__)),
+    "cookies.txt"
+)
 
 
 print("=" * 60)
