@@ -48,12 +48,12 @@ bot = commands.Bot(
 
 FFMPEG_PATH = shutil.which("ffmpeg") or "ffmpeg"
 
-# Cookie อยู่โฟลเดอร์เดียวกับ bot.py
+# Cookie file
 YOUTUBE_COOKIES = "/home/container/cookies.txt"
 
 
 # ============================================================
-# CHECK COOKIE FILE
+# COOKIE CHECK
 # ============================================================
 
 if os.path.isfile(YOUTUBE_COOKIES):
@@ -75,7 +75,7 @@ music_locks = {}
 
 
 # ============================================================
-# YT-DLP BASE OPTIONS
+# YT-DLP OPTIONS
 # ============================================================
 
 YTDL_BASE_OPTIONS = {
@@ -84,33 +84,27 @@ YTDL_BASE_OPTIONS = {
     "noplaylist": True,
     "default_search": "ytsearch",
 
-    # EJS npm
+    # EJS
     "remote_components": ["ejs:npm"],
 
-    # ไม่ดาวน์โหลดไฟล์ลง disk
+    # ไม่ดาวน์โหลดไฟล์
     "skip_download": True,
 
-    # เลือก audio
-    "format": (
-        "bestaudio[ext=m4a]/"
-        "bestaudio/"
-        "best"
-    ),
+    # ไม่บังคับ ext=m4a
+    "format": "bestaudio/best",
 
-    # ป้องกันปัญหา certificate บาง hosting
+    # ช่วยเรื่อง certificate บาง hosting
     "nocheckcertificate": True,
 }
 
 
 # ============================================================
-# YOUTUBE CLIENT FALLBACK
+# YOUTUBE CLIENTS
 # ============================================================
 
 YOUTUBE_CLIENTS = [
     ["android"],
     ["web"],
-    ["mweb"],
-    ["tv"],
 ]
 
 
@@ -133,6 +127,7 @@ FFMPEG_OPTIONS = {
 # ============================================================
 
 def get_queue(guild_id):
+
     if guild_id not in queues:
         queues[guild_id] = []
 
@@ -144,6 +139,7 @@ def get_queue(guild_id):
 # ============================================================
 
 def get_lock(guild_id):
+
     if guild_id not in music_locks:
         music_locks[guild_id] = asyncio.Lock()
 
@@ -161,6 +157,7 @@ def format_duration(seconds):
 
     try:
         seconds = int(seconds)
+
     except (TypeError, ValueError):
         return "ไม่ทราบ"
 
@@ -245,7 +242,10 @@ async def extract_song(query):
                     if not info:
                         continue
 
-                    # Search result
+                    # =================================================
+                    # SEARCH RESULT
+                    # =================================================
+
                     if "entries" in info:
 
                         entries = info.get(
@@ -257,7 +257,13 @@ async def extract_song(query):
 
                         info = entries[0]
 
-                    stream_url = info.get("url")
+                    # =================================================
+                    # STREAM URL
+                    # =================================================
+
+                    stream_url = info.get(
+                        "url"
+                    )
 
                     if not stream_url:
                         continue
@@ -317,7 +323,7 @@ async def extract_song(query):
 
 
 # ============================================================
-# SEND NOW PLAYING EMBED
+# NOW PLAYING EMBED
 # ============================================================
 
 async def send_now_playing(
@@ -377,7 +383,7 @@ async def play_next(guild):
     queue = get_queue(guild_id)
 
     # ========================================================
-    # LOOP CURRENT SONG
+    # LOOP
     # ========================================================
 
     if (
@@ -411,7 +417,7 @@ async def play_next(guild):
         current_song[guild_id] = song
 
     # ========================================================
-    # CREATE FFMPEG SOURCE
+    # FFMPEG
     # ========================================================
 
     try:
@@ -487,7 +493,7 @@ async def play_next(guild):
         return
 
     # ========================================================
-    # SEND MESSAGE
+    # FIND TEXT CHANNEL
     # ========================================================
 
     channel = None
@@ -589,7 +595,11 @@ async def on_ready():
     )
 
     print("=" * 60)
-    print("✅ Bot is online!")
+
+    print(
+        "✅ Bot is online!"
+    )
+
     print("=" * 60)
 
 
@@ -708,8 +718,8 @@ async def play(
                 content=(
                     "❌ ไม่สามารถดึงเพลงจาก YouTube "
                     "ได้ครับ\n\n"
-                    "ตรวจสอบ Cookie หรือส่ง Log "
-                    "จาก Hosting มาให้ผมตรวจครับ"
+                    "กรุณาตรวจสอบ Cookie หรือ "
+                    "ส่ง Log จาก Hosting มาให้ผมตรวจครับ"
                 )
             )
 
@@ -734,7 +744,7 @@ async def play(
         )
 
         # ====================================================
-        # CURRENTLY PLAYING
+        # ADD TO QUEUE
         # ====================================================
 
         if (
@@ -790,6 +800,10 @@ async def play(
 
             return
 
+        # ====================================================
+        # CALLBACK
+        # ====================================================
+
         def after_playing(error):
 
             if error:
@@ -811,6 +825,10 @@ async def play(
                     f"[CALLBACK ERROR] "
                     f"{callback_error}"
                 )
+
+        # ====================================================
+        # PLAY
+        # ====================================================
 
         try:
 
@@ -1157,6 +1175,7 @@ async def on_command_error(
         error,
         commands.CommandNotFound
     ):
+
         return
 
     if isinstance(
