@@ -61,33 +61,36 @@ COOKIES_FILE = os.path.join(
 
 
 # ==================================================
-# JavaScript Runtime
+# Deno
+# ==================================================
+
+DENO_PATH = os.path.join(
+    BASE_DIR,
+    "deno"
+)
+
+
+# ==================================================
+# ค้นหา JavaScript Runtime
 # ==================================================
 
 def find_runtime():
-
-    """
-    ค้นหา JavaScript runtime สำหรับ yt-dlp
-
-    ลำดับ:
-    1. Deno
-    2. Node.js
-    3. Bun
-
-    รองรับทั้ง PATH และตำแหน่งทั่วไป
-    """
 
     # ------------------------------------------------
     # Deno
     # ------------------------------------------------
 
+    if os.path.isfile(DENO_PATH):
+
+        return "deno", DENO_PATH
+
     deno_path = shutil.which("deno")
 
     if deno_path:
+
         return "deno", deno_path
 
     deno_paths = [
-        os.path.join(BASE_DIR, "deno"),
         os.path.join(BASE_DIR, "bin", "deno"),
         "/home/container/deno",
         "/home/container/bin/deno",
@@ -99,6 +102,7 @@ def find_runtime():
     for path in deno_paths:
 
         if os.path.isfile(path):
+
             return "deno", path
 
     # ------------------------------------------------
@@ -108,6 +112,7 @@ def find_runtime():
     node_path = shutil.which("node")
 
     if node_path:
+
         return "node", node_path
 
     node_paths = [
@@ -120,6 +125,7 @@ def find_runtime():
     for path in node_paths:
 
         if os.path.isfile(path):
+
             return "node", path
 
     # ------------------------------------------------
@@ -129,6 +135,7 @@ def find_runtime():
     bun_path = shutil.which("bun")
 
     if bun_path:
+
         return "bun", bun_path
 
     bun_paths = [
@@ -141,20 +148,21 @@ def find_runtime():
     for path in bun_paths:
 
         if os.path.isfile(path):
+
             return "bun", path
 
     return None, None
 
 
 # ==================================================
-# ตรวจสอบ JavaScript Runtime
+# Runtime
 # ==================================================
 
 RUNTIME_NAME, RUNTIME_PATH = find_runtime()
 
 
 # ==================================================
-# แสดงข้อมูล Runtime
+# Runtime Status
 # ==================================================
 
 def print_runtime_status():
@@ -166,17 +174,14 @@ def print_runtime_status():
     if not RUNTIME_PATH:
 
         print("❌ ไม่พบ JavaScript Runtime")
-
         print()
         print("⚠️ yt-dlp อาจไม่สามารถผ่าน")
         print("   YouTube EJS challenge ได้")
-
         print()
         print("Runtime ที่รองรับ:")
         print("   🦕 Deno")
         print("   🟢 Node.js")
         print("   🟠 Bun")
-
         print("=" * 60)
 
         return
@@ -200,66 +205,31 @@ def print_runtime_status():
 
     try:
 
-        if RUNTIME_NAME == "deno":
-
-            command = [
-                RUNTIME_PATH,
-                "--version"
-            ]
-
-        elif RUNTIME_NAME == "node":
-
-            command = [
-                RUNTIME_PATH,
-                "--version"
-            ]
-
-        elif RUNTIME_NAME == "bun":
-
-            command = [
-                RUNTIME_PATH,
-                "--version"
-            ]
-
-        else:
-
-            command = [
-                RUNTIME_PATH,
-                "--version"
-            ]
-
         result = subprocess.run(
-            command,
+            [
+                RUNTIME_PATH,
+                "--version"
+            ],
             capture_output=True,
             text=True,
             timeout=10
         )
 
-        if result.returncode == 0:
+        version = (
+            result.stdout.strip()
+            or result.stderr.strip()
+        )
 
-            version = (
-                result.stdout.strip()
-                or result.stderr.strip()
-            )
+        if version:
 
             print(
                 f"📦 Version:\n{version}"
             )
 
-        else:
-
-            print(
-                "⚠️ ไม่สามารถอ่าน Version ได้"
-            )
-
     except Exception as e:
 
         print(
-            "⚠️ ตรวจสอบ Runtime ไม่สำเร็จ"
-        )
-
-        print(
-            f"{type(e).__name__}: {e}"
+            f"⚠️ ตรวจสอบ Runtime ไม่สำเร็จ: {e}"
         )
 
     print("=" * 60)
@@ -272,14 +242,11 @@ def print_runtime_status():
 YTDL_OPTIONS = {
 
     # ------------------------------------------------
-    # Audio Format
+    # Format
     # ------------------------------------------------
 
     "format": (
-        "bestaudio[ext=m4a]/"
-        "bestaudio[ext=webm]/"
-        "bestaudio/"
-        "best"
+        "bestaudio/best"
     ),
 
     # ------------------------------------------------
@@ -319,26 +286,18 @@ YTDL_OPTIONS = {
     "cookiefile": COOKIES_FILE,
 
     # ------------------------------------------------
-    # YouTube
+    # EJS
     # ------------------------------------------------
 
-    "extractor_args": {
-
-        "youtube": {
-
-            "player_client": [
-                "web"
-            ]
-
-        }
-
-    },
+    "remote_components": [
+        "ejs:github"
+    ],
 
 }
 
 
 # ==================================================
-# เพิ่ม JavaScript Runtime ให้ yt-dlp
+# JavaScript Runtime Configuration
 # ==================================================
 
 if RUNTIME_PATH:
@@ -348,6 +307,7 @@ if RUNTIME_PATH:
             "path": RUNTIME_PATH
         }
     }
+
 
 # ==================================================
 # FFmpeg OPTIONS
@@ -402,7 +362,7 @@ print("=" * 60)
 
 
 # ==================================================
-# ตรวจสอบ FFmpeg
+# FFmpeg Check
 # ==================================================
 
 async def check_ffmpeg():
@@ -433,10 +393,6 @@ async def check_ffmpeg():
         else:
 
             print("❌ ไม่พบ FFmpeg")
-
-            print(
-                "⚠️ Bot จะไม่สามารถเล่นเพลงได้"
-            )
 
         print("=" * 60)
 
@@ -473,129 +429,136 @@ async def search_song(search):
 
         print("=" * 60)
 
+        options = YTDL_OPTIONS.copy()
+
         with yt_dlp.YoutubeDL(
-            YTDL_OPTIONS
+            options
         ) as ydl:
+
+            # ------------------------------------------------
+            # Search
+            # ------------------------------------------------
 
             info = ydl.extract_info(
                 f"ytsearch1:{search}",
                 download=False
             )
 
-            return info
+            if not info:
+
+                return None
+
+            entries = info.get(
+                "entries"
+            )
+
+            if not entries:
+
+                return None
+
+            song = entries[0]
+
+            if not song:
+
+                return None
+
+            # ------------------------------------------------
+            # ข้อมูลพื้นฐาน
+            # ------------------------------------------------
+
+            title = song.get(
+                "title",
+                search
+            )
+
+            webpage_url = song.get(
+                "webpage_url"
+            )
+
+            audio_url = song.get(
+                "url"
+            )
+
+            # ------------------------------------------------
+            # Search result อาจไม่มี URL
+            # ------------------------------------------------
+
+            if not audio_url and webpage_url:
+
+                print(
+                    "🔄 กำลังดึง Audio URL..."
+                )
+
+                direct_options = YTDL_OPTIONS.copy()
+
+                direct_options.pop(
+                    "default_search",
+                    None
+                )
+
+                with yt_dlp.YoutubeDL(
+                    direct_options
+                ) as direct_ydl:
+
+                    direct_info = direct_ydl.extract_info(
+                        webpage_url,
+                        download=False
+                    )
+
+                    if direct_info:
+
+                        title = direct_info.get(
+                            "title",
+                            title
+                        )
+
+                        audio_url = direct_info.get(
+                            "url"
+                        )
+
+                        webpage_url = direct_info.get(
+                            "webpage_url",
+                            webpage_url
+                        )
+
+            # ------------------------------------------------
+            # ตรวจสอบ URL
+            # ------------------------------------------------
+
+            if not audio_url:
+
+                raise RuntimeError(
+                    "ไม่พบ Audio URL จาก YouTube"
+                )
+
+            print("=" * 60)
+
+            print("✅ พบเพลง")
+
+            print(
+                f"🎵 {title}"
+            )
+
+            if webpage_url:
+
+                print(
+                    f"🔗 {webpage_url}"
+                )
+
+            print("=" * 60)
+
+            return {
+                "title": title,
+                "url": audio_url,
+                "webpage_url": webpage_url,
+            }
 
     try:
 
-        info = await loop.run_in_executor(
+        return await loop.run_in_executor(
             None,
             extract
         )
-
-        if not info:
-            return None
-
-        entries = info.get(
-            "entries"
-        )
-
-        if not entries:
-            return None
-
-        song = entries[0]
-
-        if not song:
-            return None
-
-        # ------------------------------------------------
-        # ข้อมูลเพลง
-        # ------------------------------------------------
-
-        title = song.get(
-            "title",
-            search
-        )
-
-        webpage_url = song.get(
-            "webpage_url"
-        )
-
-        audio_url = song.get(
-            "url"
-        )
-
-        # ------------------------------------------------
-        # ถ้า Search Result ไม่มี Audio URL
-        # ให้ Extract จาก Video โดยตรง
-        # ------------------------------------------------
-
-        if not audio_url and webpage_url:
-
-            print(
-                "🔄 กำลังดึง Audio URL จาก Video..."
-            )
-
-            direct_options = YTDL_OPTIONS.copy()
-
-            direct_options.pop(
-                "default_search",
-                None
-            )
-
-            with yt_dlp.YoutubeDL(
-                direct_options
-            ) as ydl:
-
-                direct_info = ydl.extract_info(
-                    webpage_url,
-                    download=False
-                )
-
-                if direct_info:
-
-                    audio_url = direct_info.get(
-                        "url"
-                    )
-
-                    title = direct_info.get(
-                        "title",
-                        title
-                    )
-
-        # ------------------------------------------------
-        # ตรวจ Audio URL
-        # ------------------------------------------------
-
-        if not audio_url:
-
-            raise RuntimeError(
-                "ไม่พบ Audio URL จาก YouTube"
-            )
-
-        print("=" * 60)
-
-        print("✅ พบเพลง")
-
-        print(
-            f"🎵 {title}"
-        )
-
-        if webpage_url:
-
-            print(
-                f"🔗 {webpage_url}"
-            )
-
-        print("=" * 60)
-
-        return {
-
-            "title": title,
-
-            "url": audio_url,
-
-            "webpage_url": webpage_url,
-
-        }
 
     except Exception as e:
 
@@ -627,11 +590,8 @@ async def play_next(ctx):
     voice = ctx.voice_client
 
     if voice is None:
-        return
 
-    # ------------------------------------------------
-    # Queue หมด
-    # ------------------------------------------------
+        return
 
     if not music_queue:
 
@@ -643,19 +603,11 @@ async def play_next(ctx):
 
         return
 
-    # ------------------------------------------------
-    # เอาเพลงออกจาก Queue
-    # ------------------------------------------------
-
     current_song = music_queue.pop(0)
 
     title = current_song["title"]
 
     audio_url = current_song["url"]
-
-    # ------------------------------------------------
-    # FFmpeg
-    # ------------------------------------------------
 
     try:
 
@@ -691,7 +643,7 @@ async def play_next(ctx):
         return
 
     # ------------------------------------------------
-    # Callback เมื่อเพลงจบ
+    # Callback
     # ------------------------------------------------
 
     def after_playing(error):
@@ -721,7 +673,7 @@ async def play_next(ctx):
             )
 
     # ------------------------------------------------
-    # เริ่มเล่น
+    # Play
     # ------------------------------------------------
 
     try:
@@ -762,7 +714,7 @@ async def play_next(ctx):
 
 
 # ==================================================
-# Bot Online
+# Bot Ready
 # ==================================================
 
 @bot.event
@@ -790,10 +742,6 @@ async def on_ready():
 
     print("=" * 60)
 
-    # ------------------------------------------------
-    # Cookies
-    # ------------------------------------------------
-
     if os.path.exists(COOKIES_FILE):
 
         print(
@@ -806,15 +754,7 @@ async def on_ready():
             "⚠️ Cookies: ไม่พบไฟล์"
         )
 
-    # ------------------------------------------------
-    # JavaScript Runtime
-    # ------------------------------------------------
-
     print_runtime_status()
-
-    # ------------------------------------------------
-    # FFmpeg
-    # ------------------------------------------------
 
     await check_ffmpeg()
 
@@ -894,10 +834,6 @@ async def join(ctx):
 @bot.command()
 async def play(ctx, *, search):
 
-    # ------------------------------------------------
-    # ตรวจ Voice
-    # ------------------------------------------------
-
     if ctx.author.voice is None:
 
         await ctx.send(
@@ -907,7 +843,7 @@ async def play(ctx, *, search):
         return
 
     # ------------------------------------------------
-    # Connect Voice
+    # Connect
     # ------------------------------------------------
 
     if ctx.voice_client is None:
@@ -928,7 +864,7 @@ async def play(ctx, *, search):
     voice = ctx.voice_client
 
     # ------------------------------------------------
-    # กำลังค้นหา
+    # Searching
     # ------------------------------------------------
 
     message = await ctx.send(
@@ -941,10 +877,6 @@ async def play(ctx, *, search):
             search
         )
 
-        # ------------------------------------------------
-        # ไม่พบ
-        # ------------------------------------------------
-
         if song is None:
 
             await message.edit(
@@ -954,7 +886,7 @@ async def play(ctx, *, search):
             return
 
         # ------------------------------------------------
-        # มีเพลงกำลังเล่น
+        # Queue
         # ------------------------------------------------
 
         if (
@@ -976,10 +908,6 @@ async def play(ctx, *, search):
             )
 
             return
-
-        # ------------------------------------------------
-        # ไม่มีเพลงเล่น
-        # ------------------------------------------------
 
         music_queue.append(
             song
