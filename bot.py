@@ -48,6 +48,21 @@ bot = commands.Bot(
 
 FFMPEG_PATH = shutil.which("ffmpeg") or "ffmpeg"
 
+# Cookie อยู่โฟลเดอร์เดียวกับ bot.py
+YOUTUBE_COOKIES = "/home/container/cookies.txt"
+
+
+# ============================================================
+# CHECK COOKIE FILE
+# ============================================================
+
+if os.path.isfile(YOUTUBE_COOKIES):
+    print("🍪 Cookie file: FOUND")
+    print(f"🍪 Cookie path: {YOUTUBE_COOKIES}")
+else:
+    print("❌ Cookie file: NOT FOUND")
+    print(f"❌ Expected path: {YOUTUBE_COOKIES}")
+
 
 # ============================================================
 # MUSIC DATA
@@ -69,18 +84,21 @@ YTDL_BASE_OPTIONS = {
     "noplaylist": True,
     "default_search": "ytsearch",
 
-    # ใช้ EJS npm สำหรับ YouTube
+    # EJS npm
     "remote_components": ["ejs:npm"],
 
     # ไม่ดาวน์โหลดไฟล์ลง disk
     "skip_download": True,
 
-    # พยายามเลือก audio ที่เหมาะสม
+    # เลือก audio
     "format": (
         "bestaudio[ext=m4a]/"
         "bestaudio/"
         "best"
     ),
+
+    # ป้องกันปัญหา certificate บาง hosting
+    "nocheckcertificate": True,
 }
 
 
@@ -94,24 +112,6 @@ YOUTUBE_CLIENTS = [
     ["mweb"],
     ["tv"],
 ]
-
-
-# ============================================================
-# OPTIONAL COOKIES
-# ============================================================
-#
-# ตอนนี้ไม่ต้องตั้งค่าก็ได้
-#
-# ถ้าภายหลัง Hosting ยังโดน YouTube block
-# สามารถกำหนด:
-#
-# YOUTUBE_COOKIES=/home/container/youtube_cookies.txt
-#
-# ============================================================
-
-YOUTUBE_COOKIES = os.getenv(
-    "YOUTUBE_COOKIES"
-)
 
 
 # ============================================================
@@ -155,6 +155,7 @@ def get_lock(guild_id):
 # ============================================================
 
 def format_duration(seconds):
+
     if not seconds:
         return "ไม่ทราบ"
 
@@ -178,6 +179,7 @@ def format_duration(seconds):
 # ============================================================
 
 def build_ytdl_options(client):
+
     options = YTDL_BASE_OPTIONS.copy()
 
     options["extractor_args"] = {
@@ -186,9 +188,23 @@ def build_ytdl_options(client):
         }
     }
 
-    if YOUTUBE_COOKIES:
-        if os.path.isfile(YOUTUBE_COOKIES):
-            options["cookiefile"] = YOUTUBE_COOKIES
+    # ========================================================
+    # COOKIE
+    # ========================================================
+
+    if os.path.isfile(YOUTUBE_COOKIES):
+
+        options["cookiefile"] = YOUTUBE_COOKIES
+
+        print(
+            f"🍪 Using cookies: {YOUTUBE_COOKIES}"
+        )
+
+    else:
+
+        print(
+            "⚠️ Cookie file not found."
+        )
 
     return options
 
@@ -198,14 +214,17 @@ def build_ytdl_options(client):
 # ============================================================
 
 async def extract_song(query):
+
     loop = asyncio.get_running_loop()
 
     def extract():
+
         last_error = None
 
         for client in YOUTUBE_CLIENTS:
 
             try:
+
                 print(
                     f"[YouTube] Trying client: {client}"
                 )
@@ -226,7 +245,9 @@ async def extract_song(query):
                     if not info:
                         continue
 
+                    # Search result
                     if "entries" in info:
+
                         entries = info.get(
                             "entries"
                         )
@@ -271,13 +292,15 @@ async def extract_song(query):
                     return song
 
             except Exception as error:
+
                 last_error = error
 
                 print(
                     f"[YouTube] Client {client} failed:"
                 )
+
                 print(
-                    f"{error}"
+                    error
                 )
 
                 continue
@@ -301,6 +324,7 @@ async def send_now_playing(
     channel,
     song
 ):
+
     embed = discord.Embed(
         title="🎵 กำลังเล่นเพลง",
         description=(
@@ -311,6 +335,7 @@ async def send_now_playing(
     )
 
     if song.get("webpage_url"):
+
         embed.add_field(
             name="🔗 YouTube",
             value=song["webpage_url"],
@@ -318,15 +343,19 @@ async def send_now_playing(
         )
 
     if song.get("thumbnail"):
+
         embed.set_thumbnail(
             url=song["thumbnail"]
         )
 
     try:
+
         await channel.send(
             embed=embed
         )
+
     except Exception as error:
+
         print(
             f"[MESSAGE ERROR] {error}"
         )
@@ -337,6 +366,7 @@ async def send_now_playing(
 # ============================================================
 
 async def play_next(guild):
+
     guild_id = guild.id
 
     voice = guild.voice_client
@@ -354,6 +384,7 @@ async def play_next(guild):
         loop_mode.get(guild_id, False)
         and current_song.get(guild_id)
     ):
+
         song = current_song[guild_id]
 
     else:
@@ -366,8 +397,11 @@ async def play_next(guild):
             )
 
             try:
+
                 await voice.disconnect()
+
             except Exception:
+
                 pass
 
             return
@@ -381,6 +415,7 @@ async def play_next(guild):
     # ========================================================
 
     try:
+
         source = discord.FFmpegPCMAudio(
             song["url"],
             executable=FFMPEG_PATH,
@@ -388,11 +423,13 @@ async def play_next(guild):
         )
 
     except Exception as error:
+
         print(
             f"[FFMPEG ERROR] {error}"
         )
 
         await play_next(guild)
+
         return
 
     # ========================================================
@@ -402,19 +439,24 @@ async def play_next(guild):
     def after_playing(error):
 
         if error:
+
             print(
                 f"[PLAYER ERROR] {error}"
             )
 
         try:
+
             asyncio.run_coroutine_threadsafe(
                 play_next(guild),
                 bot.loop
             )
+
         except Exception as callback_error:
+
             print(
                 "[CALLBACK ERROR]"
             )
+
             print(
                 callback_error
             )
@@ -426,6 +468,7 @@ async def play_next(guild):
     try:
 
         if voice.is_playing():
+
             voice.stop()
 
         voice.play(
@@ -440,6 +483,7 @@ async def play_next(guild):
         )
 
         await play_next(guild)
+
         return
 
     # ========================================================
@@ -449,17 +493,23 @@ async def play_next(guild):
     channel = None
 
     if guild.system_channel:
+
         channel = guild.system_channel
 
     elif voice.channel:
+
         for text_channel in guild.text_channels:
+
             if text_channel.permissions_for(
                 guild.me
             ).send_messages:
+
                 channel = text_channel
+
                 break
 
     if channel:
+
         await send_now_playing(
             channel,
             song
@@ -521,18 +571,23 @@ async def on_ready():
     print("=" * 60)
     print("🎵 DJ Pop Music Bot")
     print("=" * 60)
+
     print(
         f"Bot      : {bot.user}"
     )
+
     print(
         f"Bot ID   : {bot.user.id}"
     )
+
     print(
         f"Servers  : {len(bot.guilds)}"
     )
+
     print(
         f"Python   : {os.sys.version}"
     )
+
     print("=" * 60)
     print("✅ Bot is online!")
     print("=" * 60)
@@ -586,8 +641,11 @@ async def leave(ctx):
     )
 
     try:
+
         await voice.disconnect()
+
     except Exception:
+
         pass
 
     await ctx.send(
@@ -641,16 +699,17 @@ async def play(
             print(
                 "[YT-DLP ERROR]"
             )
+
             print(
                 error
             )
 
             await loading.edit(
                 content=(
-                    "❌ YouTube ไม่อนุญาตให้ดึงเพลงจาก "
-                    "Hosting นี้ในขณะนี้ครับ\n\n"
-                    "ลองใช้เพลงอื่น หรือส่ง Log "
-                    "จาก Hosting มาให้ผมตรวจได้ครับ"
+                    "❌ ไม่สามารถดึงเพลงจาก YouTube "
+                    "ได้ครับ\n\n"
+                    "ตรวจสอบ Cookie หรือส่ง Log "
+                    "จาก Hosting มาให้ผมตรวจครับ"
                 )
             )
 
@@ -704,8 +763,11 @@ async def play(
         ] = song
 
         try:
+
             await loading.delete()
+
         except Exception:
+
             pass
 
         try:
@@ -731,6 +793,7 @@ async def play(
         def after_playing(error):
 
             if error:
+
                 print(
                     f"[PLAYER ERROR] {error}"
                 )
@@ -905,6 +968,7 @@ async def stop(ctx):
         voice.is_playing()
         or voice.is_paused()
     ):
+
         voice.stop()
 
     await ctx.send(
@@ -1047,9 +1111,7 @@ async def help_command(ctx):
 
     embed = discord.Embed(
         title="🎵 DJ Pop Music Bot",
-        description=(
-            "คำสั่งทั้งหมดของ DJ Pop"
-        )
+        description="คำสั่งทั้งหมดของ DJ Pop"
     )
 
     embed.add_field(
