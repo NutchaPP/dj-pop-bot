@@ -344,7 +344,9 @@ YTDL_OPTIONS = {
 if RUNTIME_PATH:
 
     YTDL_OPTIONS["js_runtimes"] = {
-        RUNTIME_NAME: RUNTIME_PATH
+        RUNTIME_NAME: {
+            "path": RUNTIME_PATH
+        }
     }
 
 
