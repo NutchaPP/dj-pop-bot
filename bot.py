@@ -10,7 +10,7 @@ import yt_dlp
 
 
 # ==================================================
-# โหลด Environment Variables
+# Environment
 # ==================================================
 
 load_dotenv()
@@ -19,7 +19,7 @@ TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
     raise ValueError(
-        "❌ ไม่พบ DISCORD_TOKEN ใน Environment Variables"
+        "ไม่พบ DISCORD_TOKEN ใน Environment Variables"
     )
 
 
@@ -32,7 +32,7 @@ intents.message_content = True
 
 
 # ==================================================
-# สร้าง Bot
+# Bot
 # ==================================================
 
 bot = commands.Bot(
@@ -42,112 +42,66 @@ bot = commands.Bot(
 
 
 # ==================================================
-# Path
+# Paths
 # ==================================================
 
 BASE_DIR = os.path.dirname(
     os.path.abspath(__file__)
 )
 
-
-# ==================================================
-# Cookies
-# ==================================================
-
 COOKIES_FILE = os.path.join(
     BASE_DIR,
     "cookies.txt"
 )
 
-
-# ==================================================
-# yt-dlp OPTIONS
-# ==================================================
-
-YTDL_OPTIONS = {
-
-    # ------------------------------------------------
-    # Audio
-    # ------------------------------------------------
-
-    "format": "bestaudio/best",
-
-    # ------------------------------------------------
-    # ไม่เอา Playlist
-    # ------------------------------------------------
-
-    "noplaylist": True,
-
-    # ------------------------------------------------
-    # Output
-    # ------------------------------------------------
-
-    "quiet": True,
-
-    "no_warnings": False,
-
-    # ------------------------------------------------
-    # Network
-    # ------------------------------------------------
-
-    "source_address": "0.0.0.0",
-
-    "socket_timeout": 30,
-
-    "retries": 5,
-
-    "fragment_retries": 5,
-
-    "file_access_retries": 3,
-
-    "geo_bypass": True,
-
-    "nocheckcertificate": True,
-
-    # ------------------------------------------------
-    # Search
-    # ------------------------------------------------
-
-    "default_search": "ytsearch1",
-
-    # ------------------------------------------------
-    # EJS
-    #
-    # ใช้ npm component
-    # แต่ไม่บังคับ Runtime Deno
-    # ------------------------------------------------
-
-    "remote_components": [
-        "ejs:npm"
-    ],
-}
+# Hosting ของป๊อป
+DENO_PATH = "/home/container/deno"
 
 
 # ==================================================
-# Cookies
+# Find Deno
 # ==================================================
 
-if os.path.exists(COOKIES_FILE):
+def find_deno():
 
-    YTDL_OPTIONS["cookiefile"] = COOKIES_FILE
+    # 1. ตำแหน่งที่ Hosting ของป๊อปใช้
+    if os.path.isfile(DENO_PATH):
 
-    print("=" * 60)
-    print("🍪 พบ cookies.txt")
-    print(
-        f"📁 {COOKIES_FILE}"
-    )
-    print("=" * 60)
+        return DENO_PATH
 
-else:
+    # 2. PATH
+    deno = shutil.which("deno")
 
-    print("=" * 60)
-    print("⚠️ ไม่พบ cookies.txt")
-    print("ℹ️ จะทำงานโดยไม่ใช้ Cookies")
-    print("=" * 60)
+    if deno:
+
+        return deno
+
+    # 3. Local
+    local_paths = [
+        os.path.join(BASE_DIR, "deno"),
+        os.path.join(BASE_DIR, "bin", "deno"),
+        "/home/container/bin/deno",
+        "/usr/local/bin/deno",
+        "/usr/bin/deno",
+        os.path.expanduser(
+            "~/.deno/bin/deno"
+        ),
+    ]
+
+    for path in local_paths:
+
+        if os.path.isfile(path):
+
+            return path
+
+    return None
+
+
+DENO_EXECUTABLE = find_deno()
 
 
 # ==================================================
-# ตรวจสอบ Runtime
+# Runtime Status
 # ==================================================
 
 def print_runtime_status():
@@ -156,62 +110,144 @@ def print_runtime_status():
     print("🧩 JavaScript Runtime")
     print("=" * 60)
 
-    # ------------------------------------------------
-    # สำคัญ:
-    # เราจะไม่บังคับใช้ /home/container/deno
-    # เพราะ Log ก่อนหน้าพบ returncode -9
-    # ------------------------------------------------
+    if not DENO_EXECUTABLE:
 
-    deno = shutil.which("deno")
-    node = shutil.which("node")
-    bun = shutil.which("bun")
-
-    if deno:
+        print("❌ ไม่พบ Deno")
 
         print(
-            f"🦕 พบ Deno: {deno}"
+            "⚠️ YouTube อาจไม่สามารถแก้ EJS challenge ได้"
         )
 
-    else:
+        print("=" * 60)
 
-        print(
-            "⚠️ ไม่พบ Deno ใน PATH"
-        )
+        return False
 
-    if node:
+    print("🦕 พบ Deno")
 
-        print(
-            f"🟢 พบ Node.js: {node}"
-        )
-
-    else:
-
-        print(
-            "⚠️ ไม่พบ Node.js ใน PATH"
-        )
-
-    if bun:
-
-        print(
-            f"🟠 พบ Bun: {bun}"
-        )
-
-    else:
-
-        print(
-            "⚠️ ไม่พบ Bun ใน PATH"
-        )
-
-    print()
     print(
-        "ℹ️ Bot จะไม่กำหนด js_runtimes เอง"
+        f"📁 Path: {DENO_EXECUTABLE}"
+    )
+
+    try:
+
+        result = subprocess.run(
+            [
+                DENO_EXECUTABLE,
+                "--version"
+            ],
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+
+        output = (
+            result.stdout.strip()
+            or result.stderr.strip()
+        )
+
+        if output:
+
+            print(
+                f"📦 Version:\n{output}"
+            )
+
+    except Exception as e:
+
+        print(
+            f"⚠️ ตรวจสอบ Deno ไม่สำเร็จ: {e}"
+        )
+
+    print("=" * 60)
+
+    return True
+
+
+# ==================================================
+# yt-dlp Base Options
+# ==================================================
+
+YTDL_BASE_OPTIONS = {
+
+    # ไม่ดาวน์โหลดไฟล์
+    "skip_download": True,
+
+    # ไม่เอา Playlist
+    "noplaylist": True,
+
+    # Network
+    "source_address": "0.0.0.0",
+
+    "geo_bypass": True,
+
+    "nocheckcertificate": True,
+
+    # Retry
+    "retries": 3,
+
+    "fragment_retries": 3,
+
+    "socket_timeout": 20,
+
+    # EJS
+    #
+    # Deno รองรับการดาวน์โหลด yt-dlp-ejs
+    # จาก npm
+    #
+    "remote_components": [
+        "ejs:npm"
+    ],
+
+}
+
+
+# ==================================================
+# Deno Configuration
+# ==================================================
+
+if DENO_EXECUTABLE:
+
+    YTDL_BASE_OPTIONS["js_runtimes"] = {
+        "deno": {
+            "path": DENO_EXECUTABLE
+        }
+    }
+
+
+# ==================================================
+# Cookies
+# ==================================================
+
+if os.path.isfile(COOKIES_FILE):
+
+    YTDL_BASE_OPTIONS["cookiefile"] = (
+        COOKIES_FILE
+    )
+
+    print("=" * 60)
+
+    print("🍪 พบ cookies.txt")
+
+    print(
+        f"📁 {COOKIES_FILE}"
+    )
+
+    print("=" * 60)
+
+else:
+
+    print("=" * 60)
+
+    print("ℹ️ ไม่พบ cookies.txt")
+
+    print(
+        "ℹ️ Bot จะทำงานโดยไม่ใช้ Cookies"
     )
 
     print("=" * 60)
 
 
 # ==================================================
-# FFmpeg OPTIONS
+# FFmpeg
 # ==================================================
 
 FFMPEG_OPTIONS = {
@@ -223,10 +259,8 @@ FFMPEG_OPTIONS = {
         "-nostdin"
     ),
 
-    "options": (
-        "-vn "
-        "-loglevel warning"
-    ),
+    "options": "-vn",
+
 }
 
 
@@ -240,44 +274,7 @@ current_song = None
 
 
 # ==================================================
-# yt-dlp Options Builder
-# ==================================================
-
-def build_ytdl_options():
-
-    options = YTDL_OPTIONS.copy()
-
-    if os.path.exists(COOKIES_FILE):
-
-        options["cookiefile"] = COOKIES_FILE
-
-    else:
-
-        options.pop(
-            "cookiefile",
-            None
-        )
-
-    # ------------------------------------------------
-    # สำคัญมาก
-    #
-    # ไม่ใส่:
-    #
-    # options["js_runtimes"]
-    #
-    # เพราะก่อนหน้านี้ Deno ถูก kill -9
-    # ------------------------------------------------
-
-    options.pop(
-        "js_runtimes",
-        None
-    )
-
-    return options
-
-
-# ==================================================
-# FFmpeg Check
+# Check FFmpeg
 # ==================================================
 
 async def check_ffmpeg():
@@ -304,171 +301,179 @@ async def check_ffmpeg():
 
 
 # ==================================================
-# ตรวจสอบ yt-dlp Version
+# Extract Direct Audio URL
 # ==================================================
 
-def print_ytdlp_version():
+def extract_direct_url(webpage_url):
 
-    print("=" * 60)
+    """
+    ดึง Audio URL จาก YouTube โดยตรง
 
-    try:
+    พยายามหลาย format
+    """
+
+    formats = [
+
+        # Audio ปกติ
+        "bestaudio/best",
+
+        # Audio สำรอง
+        "bestaudio[ext=m4a]/bestaudio",
+
+        # Format 18
+        "18",
+
+        # fallback
+        "best",
+
+    ]
+
+    last_error = None
+
+    for format_selector in formats:
+
+        print("=" * 60)
 
         print(
-            f"📦 yt-dlp version: "
-            f"{yt_dlp.version.__version__}"
+            f"🎧 ทดลอง format: {format_selector}"
         )
 
-    except Exception:
+        print("=" * 60)
 
-        print(
-            "⚠️ ไม่สามารถอ่าน yt-dlp version"
-        )
+        options = YTDL_BASE_OPTIONS.copy()
 
-    print("=" * 60)
+        options["format"] = format_selector
 
+        options["quiet"] = True
 
-# ==================================================
-# Extract YouTube
-# ==================================================
+        options["no_warnings"] = False
 
-def extract_youtube(
-    url,
-    format_value="bestaudio/best"
-):
+        try:
 
-    options = build_ytdl_options()
+            with yt_dlp.YoutubeDL(
+                options
+            ) as ydl:
 
-    options["format"] = format_value
+                info = ydl.extract_info(
+                    webpage_url,
+                    download=False
+                )
 
-    print("=" * 60)
+                if not info:
 
-    print(
-        "🎧 กำลัง Extract YouTube"
-    )
+                    continue
 
-    print(
-        f"🔗 {url}"
-    )
+                # --------------------------------------------------
+                # ถ้ามี URL ตรง
+                # --------------------------------------------------
 
-    print(
-        f"🎛️ Format: {format_value}"
-    )
-
-    print("=" * 60)
-
-    with yt_dlp.YoutubeDL(
-        options
-    ) as ydl:
-
-        info = ydl.extract_info(
-            url,
-            download=False
-        )
-
-        if not info:
-
-            return None
-
-        title = info.get(
-            "title",
-            "Unknown"
-        )
-
-        webpage_url = info.get(
-            "webpage_url",
-            url
-        )
-
-        audio_url = info.get(
-            "url"
-        )
-
-        # ------------------------------------------------
-        # กรณี info ไม่มี URL
-        # ------------------------------------------------
-
-        if not audio_url:
-
-            formats = info.get(
-                "formats",
-                []
-            )
-
-            # ------------------------------------------------
-            # เลือก Audio Only
-            # ------------------------------------------------
-
-            audio_formats = []
-
-            for fmt in formats:
-
-                fmt_url = fmt.get(
+                audio_url = info.get(
                     "url"
                 )
 
-                if not fmt_url:
-                    continue
+                if audio_url:
 
-                acodec = fmt.get(
-                    "acodec"
-                )
-
-                if (
-                    acodec
-                    and acodec != "none"
-                ):
-
-                    audio_formats.append(
-                        fmt
+                    print(
+                        "✅ พบ Direct Audio URL"
                     )
 
-            if audio_formats:
+                    return {
+                        "title": info.get(
+                            "title",
+                            "Unknown"
+                        ),
+                        "url": audio_url,
+                        "webpage_url": info.get(
+                            "webpage_url",
+                            webpage_url
+                        ),
+                        "duration": info.get(
+                            "duration"
+                        ),
+                        "thumbnail": info.get(
+                            "thumbnail"
+                        ),
+                    }
 
-                audio_formats.sort(
-                    key=lambda x: (
-                        x.get(
-                            "abr"
+                # --------------------------------------------------
+                # ถ้าไม่มี URL ลองหา formats
+                # --------------------------------------------------
+
+                available_formats = (
+                    info.get("formats")
+                    or []
+                )
+
+                # หา audio ก่อน
+                audio_formats = [
+                    f
+                    for f in available_formats
+                    if f.get("url")
+                    and (
+                        f.get("vcodec") == "none"
+                        or f.get("acodec") != "none"
+                    )
+                ]
+
+                if audio_formats:
+
+                    # เอาตัวท้าย/คุณภาพดีที่สุด
+                    selected = audio_formats[-1]
+
+                    audio_url = selected.get(
+                        "url"
+                    )
+
+                    if audio_url:
+
+                        print(
+                            "✅ พบ Audio URL จาก formats"
                         )
-                        or 0
-                    ),
-                    reverse=True
-                )
 
-                audio_url = (
-                    audio_formats[0]
-                    .get("url")
-                )
+                        return {
+                            "title": info.get(
+                                "title",
+                                "Unknown"
+                            ),
+                            "url": audio_url,
+                            "webpage_url": info.get(
+                                "webpage_url",
+                                webpage_url
+                            ),
+                            "duration": info.get(
+                                "duration"
+                            ),
+                            "thumbnail": info.get(
+                                "thumbnail"
+                            ),
+                        }
 
-        if not audio_url:
+        except Exception as e:
 
-            return None
+            last_error = e
 
-        print("=" * 60)
+            print(
+                f"⚠️ format {format_selector} ไม่สำเร็จ"
+            )
 
-        print(
-            "✅ Extract สำเร็จ"
-        )
+            print(
+                f"{type(e).__name__}: {e}"
+            )
 
-        print(
-            f"🎵 {title}"
-        )
+    if last_error:
 
-        print("=" * 60)
+        raise last_error
 
-        return {
-            "title": title,
-            "url": audio_url,
-            "webpage_url": webpage_url,
-        }
+    raise RuntimeError(
+        "ไม่พบ Audio URL จาก YouTube"
+    )
 
 
 # ==================================================
-# ค้นหาเพลง
+# Search YouTube
 # ==================================================
 
-async def search_song(
-    search
-):
+async def search_song(search):
 
     loop = asyncio.get_running_loop()
 
@@ -482,45 +487,40 @@ async def search_song(
 
         print("=" * 60)
 
-        search_options = build_ytdl_options()
+        # --------------------------------------------------
+        # สำคัญ:
+        # Search ใช้ extract_flat
+        # เพื่อไม่ให้ yt-dlp พยายามเลือก audio
+        # ตั้งแต่ขั้นตอนค้นหา
+        # --------------------------------------------------
 
-        # ------------------------------------------------
-        # Search อย่างเดียวก่อน
-        #
-        # ไม่ใช้ format ตอน Search
-        # ------------------------------------------------
+        search_options = (
+            YTDL_BASE_OPTIONS.copy()
+        )
 
         search_options.pop(
-            "format",
+            "skip_download",
             None
         )
 
-        try:
+        search_options["extract_flat"] = True
 
-            with yt_dlp.YoutubeDL(
-                search_options
-            ) as ydl:
+        search_options["quiet"] = True
 
-                info = ydl.extract_info(
-                    f"ytsearch1:{search}",
-                    download=False
-                )
+        search_options["no_warnings"] = False
 
-        except Exception as e:
+        search_options["default_search"] = (
+            "ytsearch1"
+        )
 
-            print("=" * 60)
+        with yt_dlp.YoutubeDL(
+            search_options
+        ) as ydl:
 
-            print(
-                "❌ SEARCH ERROR"
+            info = ydl.extract_info(
+                f"ytsearch1:{search}",
+                download=False
             )
-
-            print(
-                f"{type(e).__name__}: {e}"
-            )
-
-            print("=" * 60)
-
-            raise
 
         if not info:
 
@@ -545,194 +545,109 @@ async def search_song(
             search
         )
 
-        webpage_url = (
-            song.get("webpage_url")
-            or song.get("original_url")
+        webpage_url = song.get(
+            "webpage_url"
         )
+
+        # บางกรณี flat extraction
+        # อาจคืน URL เป็น id
+        if not webpage_url:
+
+            video_id = song.get(
+                "id"
+            )
+
+            if video_id:
+
+                webpage_url = (
+                    f"https://www.youtube.com/watch?v={video_id}"
+                )
 
         if not webpage_url:
 
             raise RuntimeError(
-                "❌ Search ไม่พบ YouTube URL"
+                "ค้นหาเจอเพลง แต่ไม่พบ YouTube URL"
             )
 
+        print("=" * 60)
+
+        print("✅ พบเพลง")
+
         print(
-            f"🎵 พบ: {title}"
+            f"🎵 {title}"
         )
 
         print(
             f"🔗 {webpage_url}"
         )
 
-        # ------------------------------------------------
-        # Extract Audio
-        # ------------------------------------------------
+        print("=" * 60)
 
-        result = None
+        # --------------------------------------------------
+        # ดึง Audio URL จริง
+        # --------------------------------------------------
 
-        # ------------------------------------------------
-        # Attempt 1
-        # Best Audio
-        # ------------------------------------------------
+        direct_song = extract_direct_url(
+            webpage_url
+        )
 
-        try:
+        if not direct_song:
 
-            result = extract_youtube(
-                webpage_url,
-                "bestaudio/best"
+            raise RuntimeError(
+                "ไม่สามารถดึง Audio URL ได้"
             )
 
-        except Exception as e:
-
-            print("=" * 60)
-
-            print(
-                "⚠️ Best Audio ล้มเหลว"
+        direct_song["title"] = (
+            direct_song.get(
+                "title",
+                title
             )
+        )
 
-            print(
-                f"{type(e).__name__}: {e}"
+        direct_song["webpage_url"] = (
+            direct_song.get(
+                "webpage_url",
+                webpage_url
             )
+        )
 
-            print("=" * 60)
+        return direct_song
 
-        if result:
+    try:
 
-            return result
+        return await loop.run_in_executor(
+            None,
+            extract
+        )
 
-        # ------------------------------------------------
-        # Attempt 2
-        # Format 18
-        # ------------------------------------------------
+    except Exception as e:
+
+        print("=" * 60)
+
+        print("❌ SEARCH ERROR")
 
         print(
-            "🔄 กำลังลอง fallback format 18..."
+            f"{type(e).__name__}: {e}"
         )
 
-        try:
+        print("=" * 60)
 
-            result = extract_youtube(
-                webpage_url,
-                "18"
-            )
-
-        except Exception as e:
-
-            print("=" * 60)
-
-            print(
-                "⚠️ Format 18 ล้มเหลว"
-            )
-
-            print(
-                f"{type(e).__name__}: {e}"
-            )
-
-            print("=" * 60)
-
-        if result:
-
-            return result
-
-        # ------------------------------------------------
-        # Attempt 3
-        # Best available
-        # ------------------------------------------------
-
-        print(
-            "🔄 กำลังลอง fallback best..."
-        )
-
-        try:
-
-            result = extract_youtube(
-                webpage_url,
-                "best"
-            )
-
-        except Exception as e:
-
-            print("=" * 60)
-
-            print(
-                "⚠️ Best fallback ล้มเหลว"
-            )
-
-            print(
-                f"{type(e).__name__}: {e}"
-            )
-
-            print("=" * 60)
-
-        if result:
-
-            return result
-
-        raise RuntimeError(
-            "ไม่สามารถดึง Audio URL จาก YouTube ได้"
-        )
-
-    # ------------------------------------------------
-    # Retry
-    # ------------------------------------------------
-
-    last_error = None
-
-    for attempt in range(
-        1,
-        4
-    ):
-
-        print(
-            f"🔁 Extraction attempt "
-            f"{attempt}/3"
-        )
-
-        try:
-
-            return await loop.run_in_executor(
-                None,
-                extract
-            )
-
-        except Exception as e:
-
-            last_error = e
-
-            print("=" * 60)
-
-            print(
-                f"⚠️ Attempt {attempt} failed"
-            )
-
-            print(
-                f"{type(e).__name__}: {e}"
-            )
-
-            print("=" * 60)
-
-            if attempt < 3:
-
-                await asyncio.sleep(
-                    2
-                )
-
-    raise last_error
+        raise
 
 
 # ==================================================
-# เล่นเพลงถัดไป
+# Play Next
 # ==================================================
 
-async def play_next(
-    ctx
-):
+async def play_next(ctx):
 
     global current_song
 
     voice = ctx.voice_client
 
     if voice is None:
+
+        current_song = None
 
         return
 
@@ -758,26 +673,11 @@ async def play_next(
         "url"
     ]
 
-    print("=" * 60)
-
-    print(
-        f"▶️ กำลังเล่น: {title}"
-    )
-
-    print("=" * 60)
-
     try:
-
-        ffmpeg_path = (
-            shutil.which(
-                "ffmpeg"
-            )
-            or "ffmpeg"
-        )
 
         source = discord.FFmpegPCMAudio(
             audio_url,
-            executable=ffmpeg_path,
+            executable="ffmpeg",
             **FFMPEG_OPTIONS
         )
 
@@ -785,9 +685,7 @@ async def play_next(
 
         print("=" * 60)
 
-        print(
-            "❌ FFMPEG SOURCE ERROR"
-        )
+        print("❌ FFMPEG SOURCE ERROR")
 
         print(
             f"{type(e).__name__}: {e}"
@@ -795,33 +693,30 @@ async def play_next(
 
         print("=" * 60)
 
-        current_song = None
-
         await ctx.send(
-            "❌ เปิดเสียงเพลงไม่ได้ครับ\n"
+            "❌ เปิด Audio Stream ไม่ได้ครับ\n"
             f"`{type(e).__name__}: {e}`"
         )
 
+        current_song = None
+
+        # ไปเพลงถัดไป
+        if music_queue:
+
+            await play_next(ctx)
+
         return
 
-    # ------------------------------------------------
+    # --------------------------------------------------
     # Callback
-    # ------------------------------------------------
+    # --------------------------------------------------
 
-    def after_playing(
-        error
-    ):
+    def after_playing(error):
 
         if error:
 
             print(
                 f"❌ Audio Error: {error}"
-            )
-
-        else:
-
-            print(
-                f"✅ เพลงจบ: {title}"
             )
 
         future = asyncio.run_coroutine_threadsafe(
@@ -835,12 +730,16 @@ async def play_next(
                 timeout=60
             )
 
-        except Exception as e:
+        except Exception as callback_error:
 
             print(
                 "❌ PLAY NEXT ERROR:",
-                e
+                callback_error
             )
+
+    # --------------------------------------------------
+    # Play
+    # --------------------------------------------------
 
     try:
 
@@ -853,9 +752,7 @@ async def play_next(
 
         print("=" * 60)
 
-        print(
-            "❌ VOICE PLAY ERROR"
-        )
+        print("❌ VOICE PLAY ERROR")
 
         print(
             f"{type(e).__name__}: {e}"
@@ -863,12 +760,12 @@ async def play_next(
 
         print("=" * 60)
 
-        current_song = None
-
         await ctx.send(
             "❌ เล่นเพลงไม่ได้ครับ\n"
             f"`{type(e).__name__}: {e}`"
         )
+
+        current_song = None
 
         return
 
@@ -878,11 +775,17 @@ async def play_next(
 
 
 # ==================================================
-# Bot Ready
+# Ready
 # ==================================================
 
 @bot.event
 async def on_ready():
+
+    print("=" * 60)
+
+    print(
+        "🚀 DJ Pop พร้อมใช้งาน"
+    )
 
     print("=" * 60)
 
@@ -896,9 +799,7 @@ async def on_ready():
 
     print("=" * 60)
 
-    print(
-        "📋 Commands:"
-    )
+    print("📋 Commands:")
 
     for command in bot.commands:
 
@@ -908,7 +809,10 @@ async def on_ready():
 
     print("=" * 60)
 
-    print_ytdlp_version()
+    print(
+        f"📦 yt-dlp version: "
+        f"{yt_dlp.version.__version__}"
+    )
 
     print_runtime_status()
 
@@ -965,10 +869,15 @@ async def join(ctx):
 
     except Exception as e:
 
+        print("=" * 60)
+
+        print("❌ JOIN ERROR")
+
         print(
-            "❌ JOIN ERROR:",
-            e
+            f"{type(e).__name__}: {e}"
         )
+
+        print("=" * 60)
 
         await ctx.send(
             "❌ Bot เข้าห้องไม่ได้ครับ\n"
@@ -981,11 +890,7 @@ async def join(ctx):
 # ==================================================
 
 @bot.command()
-async def play(
-    ctx,
-    *,
-    search
-):
+async def play(ctx, *, search):
 
     if ctx.author.voice is None:
 
@@ -995,9 +900,9 @@ async def play(
 
         return
 
-    # ------------------------------------------------
+    # --------------------------------------------------
     # Connect
-    # ------------------------------------------------
+    # --------------------------------------------------
 
     if ctx.voice_client is None:
 
@@ -1016,9 +921,9 @@ async def play(
 
     voice = ctx.voice_client
 
-    # ------------------------------------------------
-    # Searching
-    # ------------------------------------------------
+    # --------------------------------------------------
+    # Search Message
+    # --------------------------------------------------
 
     message = await ctx.send(
         f"🔎 กำลังค้นหา **{search}** ..."
@@ -1038,9 +943,9 @@ async def play(
 
             return
 
-        # ------------------------------------------------
+        # --------------------------------------------------
         # Queue
-        # ------------------------------------------------
+        # --------------------------------------------------
 
         if (
             voice.is_playing()
@@ -1074,17 +979,13 @@ async def play(
 
             pass
 
-        await play_next(
-            ctx
-        )
+        await play_next(ctx)
 
     except Exception as e:
 
         print("=" * 60)
 
-        print(
-            "❌ PLAY ERROR"
-        )
+        print("❌ PLAY ERROR")
 
         print(
             f"ประเภท: {type(e).__name__}"
@@ -1233,13 +1134,6 @@ async def queue(ctx):
             f"{song['title']}\n"
         )
 
-    if len(text) > 1900:
-
-        text = (
-            text[:1900]
-            + "\n..."
-        )
-
     await ctx.send(
         text
     )
@@ -1316,19 +1210,6 @@ async def leave(ctx):
 
         current_song = None
 
-        try:
-
-            if (
-                ctx.voice_client.is_playing()
-                or ctx.voice_client.is_paused()
-            ):
-
-                ctx.voice_client.stop()
-
-        except Exception:
-
-            pass
-
         await ctx.voice_client.disconnect()
 
         await ctx.send(
@@ -1388,14 +1269,12 @@ async def on_command_error(
 
 
 # ==================================================
-# Start Bot
+# Start
 # ==================================================
 
 print("=" * 60)
 
-print(
-    "🚀 Starting DJ Pop..."
-)
+print("🚀 Starting DJ Pop...")
 
 print("=" * 60)
 
