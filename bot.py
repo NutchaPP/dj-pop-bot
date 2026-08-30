@@ -1,6 +1,7 @@
 import os
 import asyncio
 import shutil
+import re
 
 import discord
 from discord.ext import commands
@@ -17,9 +18,7 @@ load_dotenv()
 TOKEN = os.getenv("DISCORD_TOKEN")
 
 if not TOKEN:
-    raise ValueError(
-        "ไม่พบ DISCORD_TOKEN ใน Environment Variables"
-    )
+    raise ValueError("ไม่พบ DISCORD_TOKEN ใน Environment Variables")
 
 
 # ============================================================
@@ -50,8 +49,9 @@ FFMPEG_PATH = shutil.which("ffmpeg") or "ffmpeg"
 
 COOKIE_PATH = "/home/container/cookies.txt"
 
+
 if os.path.isfile(COOKIE_PATH):
-    print(f"🍪 Cookie file: FOUND")
+    print("🍪 Cookie file: FOUND")
     print(f"🍪 Cookie path: {COOKIE_PATH}")
 else:
     print("⚠️ Cookie file not found")
@@ -68,8 +68,29 @@ music_locks = {}
 
 
 # ============================================================
-# YT-DLP OPTIONS
+# YT-DLP
 # ============================================================
+
+# IMPORTANT
+#
+# ไม่ใช้:
+#     remote_components = ["ejs:npm"]
+#
+# เพราะ Hosting ของป๊อปฆ่า Deno process ด้วย returncode -9
+#
+# และไม่ใช้ cookie บังคับกับทุก client
+# เพราะ cookie ปัจจุบันถูก YouTube แจ้งว่า invalid/rotated
+#
+# เราจะลอง client ที่ไม่ต้องใช้ account cookie ก่อน
+# ============================================================
+
+YOUTUBE_CLIENTS = [
+    ["android_vr"],
+    ["tv_simply"],
+    ["web_safari"],
+    ["web_embedded"],
+]
+
 
 YTDL_BASE_OPTIONS = {
     "quiet": False,
@@ -79,49 +100,36 @@ YTDL_BASE_OPTIONS = {
 
     "default_search": "ytsearch",
 
-    # ใช้ EJS
-    "remote_components": ["ejs:npm"],
+    # ยืดหยุ่นที่สุด
+    "format": "bestaudio/best",
 
-    # สำคัญ:
-    # ไม่บังคับ m4a / bestaudio
-    # เพราะบาง YouTube client ไม่มี format เหล่านั้น
-    "format": "best",
+    "socket_timeout": 20,
 
-    "socket_timeout": 30,
+    "retries": 1,
 
-    "retries": 3,
+    "fragment_retries": 1,
 
-    "fragment_retries": 3,
-
-    "extractor_retries": 3,
+    "extractor_retries": 1,
 
     "skip_unavailable_fragments": True,
 
     "nocheckcertificate": True,
+
+    # ไม่โหลด playlist
+    "extract_flat": False,
 }
 
 
 # ============================================================
-# YOUTUBE CLIENTS
-# ============================================================
-
-YOUTUBE_CLIENTS = [
-    ["web"],
-    ["android"],
-    ["mweb"],
-    ["tv"],
-]
-
-
-# ============================================================
-# FFMPEG OPTIONS
+# FFMPEG
 # ============================================================
 
 FFMPEG_OPTIONS = {
     "before_options": (
         "-reconnect 1 "
         "-reconnect_streamed 1 "
-        "-reconnect_delay_max 5"
+        "-reconnect_delay_max 5 "
+        "-nostdin"
     ),
     "options": "-vn",
 }
@@ -176,6 +184,24 @@ def format_duration(seconds):
 
 
 # ============================================================
+# URL CHECK
+# ============================================================
+
+def is_youtube_url(text):
+
+    if not text:
+        return False
+
+    return bool(
+        re.search(
+            r"(youtube\.com|youtu\.be)",
+            text,
+            re.IGNORECASE
+        )
+    )
+
+
+# ============================================================
 # BUILD YT-DLP OPTIONS
 # ============================================================
 
@@ -189,23 +215,49 @@ def build_ytdl_options(client):
         }
     }
 
-    if os.path.isfile(COOKIE_PATH):
+    # --------------------------------------------------------
+    # สำคัญ:
+    # ไม่ส่ง cookies ให้ client ที่ไม่รองรับ account cookies
+    # --------------------------------------------------------
 
-        options["cookiefile"] = COOKIE_PATH
+    if client in (
+        ["web"],
+        ["web_safari"],
+        ["web_embedded"],
+    ):
+
+        if os.path.isfile(COOKIE_PATH):
+
+            # ใช้เฉพาะกรณีจำเป็น
+            #
+            # แต่ cookie อาจหมดอายุ ดังนั้นถ้า error
+            # จะลอง extraction ใหม่โดยไม่ใช้ cookie
+            options["cookiefile"] = COOKIE_PATH
 
     return options
 
 
 # ============================================================
-# CHOOSE STREAM URL
+# CHOOSE STREAM
 # ============================================================
 
 def choose_stream(info):
+
+    if not info:
+        return None
+
+    # --------------------------------------------------------
+    # yt-dlp บางครั้งส่ง URL ตรงมา
+    # --------------------------------------------------------
 
     direct_url = info.get("url")
 
     if direct_url:
         return direct_url
+
+    # --------------------------------------------------------
+    # formats
+    # --------------------------------------------------------
 
     formats = info.get("formats") or []
 
@@ -213,7 +265,7 @@ def choose_stream(info):
         return None
 
     # --------------------------------------------------------
-    # เลือก audio-only ก่อน
+    # Audio only
     # --------------------------------------------------------
 
     audio_formats = []
@@ -227,46 +279,74 @@ def choose_stream(info):
 
         acodec = fmt.get("acodec")
 
-        if acodec and acodec != "none":
+        if not acodec:
+            continue
 
-            audio_formats.append(fmt)
+        if acodec == "none":
+            continue
+
+        audio_formats.append(fmt)
 
     if audio_formats:
 
-        # เลือก audio ที่มี bitrate สูงสุด
+        def audio_score(fmt):
+
+            abr = fmt.get("abr") or 0
+            tbr = fmt.get("tbr") or 0
+
+            return (
+                float(abr),
+                float(tbr)
+            )
+
         audio_formats.sort(
-            key=lambda x: (
-                x.get("abr") or 0,
-                x.get("tbr") or 0
-            ),
+            key=audio_score,
             reverse=True
         )
 
-        return audio_formats[0]["url"]
+        return audio_formats[0].get("url")
 
     # --------------------------------------------------------
-    # fallback: format ไหนก็ได้ที่มี URL
+    # fallback
     # --------------------------------------------------------
 
-    valid_formats = [
-        fmt
-        for fmt in formats
-        if fmt.get("url")
-    ]
+    valid_formats = []
 
-    if valid_formats:
+    for fmt in formats:
 
-        valid_formats.sort(
-            key=lambda x: (
-                x.get("tbr") or 0,
-                x.get("height") or 0
-            ),
-            reverse=True
-        )
+        if fmt.get("url"):
+            valid_formats.append(fmt)
 
-        return valid_formats[0]["url"]
+    if not valid_formats:
+        return None
 
-    return None
+    valid_formats.sort(
+        key=lambda x: (
+            x.get("tbr") or 0,
+            x.get("height") or 0
+        ),
+        reverse=True
+    )
+
+    return valid_formats[0].get("url")
+
+
+# ============================================================
+# CLEAN SEARCH RESULT
+# ============================================================
+
+def normalize_query(query):
+
+    query = query.strip()
+
+    if is_youtube_url(query):
+        return query
+
+    # ชื่อเพลง
+    #
+    # ytsearch1 = ค้นหาแค่เพลงแรก
+    # ลด request และลดโอกาสโดน YouTube block
+    return f"ytsearch1:{query}"
 
 
 # ============================================================
@@ -279,56 +359,69 @@ async def extract_song(query):
 
     def extract():
 
+        search_query = normalize_query(query)
+
         last_error = None
 
-        # ----------------------------------------------------
-        # ลองแต่ละ YouTube client
-        # ----------------------------------------------------
+        # ====================================================
+        # TRY CLIENTS
+        # ====================================================
 
-        for index, client in enumerate(
-            YOUTUBE_CLIENTS,
-            start=1
-        ):
+        for client in YOUTUBE_CLIENTS:
+
+            client_name = client[0]
+
+            print(
+                f"[YouTube] Trying client: {client_name}"
+            )
+
+            options = build_ytdl_options(
+                client
+            )
 
             try:
-
-                print(
-                    f"[YouTube] Extraction attempt {index}"
-                )
-
-                options = build_ytdl_options(
-                    client
-                )
 
                 with yt_dlp.YoutubeDL(
                     options
                 ) as ytdl:
 
                     info = ytdl.extract_info(
-                        query,
+                        search_query,
                         download=False
                     )
 
                     if not info:
+
+                        print(
+                            "[YouTube] Empty result"
+                        )
+
                         continue
 
                     # ------------------------------------------------
-                    # ytsearch
+                    # SEARCH RESULT
                     # ------------------------------------------------
 
                     if "entries" in info:
 
-                        entries = info.get(
-                            "entries"
-                        )
+                        entries = [
+                            entry
+                            for entry in info.get("entries", [])
+                            if entry
+                        ]
 
                         if not entries:
+
+                            print(
+                                "[YouTube] No search result"
+                            )
+
                             continue
 
                         info = entries[0]
 
                     # ------------------------------------------------
-                    # เลือก stream แบบยืดหยุ่น
+                    # STREAM
                     # ------------------------------------------------
 
                     stream_url = choose_stream(
@@ -338,7 +431,9 @@ async def extract_song(query):
                     if not stream_url:
 
                         print(
-                            "[YouTube] No playable stream found"
+                            f"[YouTube] "
+                            f"{client_name}: "
+                            f"No playable stream"
                         )
 
                         continue
@@ -376,8 +471,14 @@ async def extract_song(query):
                     )
 
                     print(
-                        f"[YouTube] Title: "
-                        f"{song['title']}"
+                        f"[YouTube] "
+                        f"Title: {song['title']}"
+                    )
+
+                    print(
+                        f"[YouTube] "
+                        f"Duration: "
+                        f"{format_duration(song['duration'])}"
                     )
 
                     return song
@@ -387,15 +488,20 @@ async def extract_song(query):
                 last_error = error
 
                 print(
-                    f"[YouTube] Extraction attempt "
-                    f"{index} failed:"
+                    f"[YouTube] "
+                    f"{client_name} failed:"
                 )
 
                 print(error)
 
                 continue
 
+        # ====================================================
+        # ALL FAILED
+        # ====================================================
+
         if last_error:
+
             raise last_error
 
         return None
@@ -496,13 +602,6 @@ async def play_next(guild):
                 None
             )
 
-            try:
-
-                await voice.disconnect()
-
-            except Exception:
-                pass
-
             return
 
         song = queue.pop(0)
@@ -512,7 +611,7 @@ async def play_next(guild):
         ] = song
 
     # --------------------------------------------------------
-    # FFMPEG
+    # SOURCE
     # --------------------------------------------------------
 
     try:
@@ -549,19 +648,20 @@ async def play_next(guild):
 
         try:
 
-            asyncio.run_coroutine_threadsafe(
+            future = asyncio.run_coroutine_threadsafe(
                 play_next(guild),
                 bot.loop
+            )
+
+            future.result(
+                timeout=5
             )
 
         except Exception as callback_error:
 
             print(
-                "[CALLBACK ERROR]"
-            )
-
-            print(
-                callback_error
+                f"[CALLBACK ERROR] "
+                f"{callback_error}"
             )
 
     # --------------------------------------------------------
@@ -592,16 +692,22 @@ async def play_next(guild):
         return
 
     # --------------------------------------------------------
-    # FIND TEXT CHANNEL
+    # CHANNEL
     # --------------------------------------------------------
 
     channel = None
 
     if guild.system_channel:
 
-        channel = guild.system_channel
+        permissions = guild.system_channel.permissions_for(
+            guild.me
+        )
 
-    elif voice.channel:
+        if permissions.send_messages:
+
+            channel = guild.system_channel
+
+    if channel is None:
 
         for text_channel in guild.text_channels:
 
@@ -645,7 +751,10 @@ async def ensure_voice(ctx):
 
         if voice is None:
 
-            voice = await channel.connect()
+            voice = await channel.connect(
+                timeout=30,
+                reconnect=True
+            )
 
         elif voice.channel != channel:
 
@@ -677,9 +786,7 @@ async def on_ready():
 
     print("=" * 60)
 
-    print(
-        "🎵 DJ Pop Music Bot"
-    )
+    print("🎵 DJ Pop Music Bot")
 
     print("=" * 60)
 
@@ -800,6 +907,10 @@ async def play(
 
         return
 
+    # --------------------------------------------------------
+    # VOICE
+    # --------------------------------------------------------
+
     voice = await ensure_voice(
         ctx
     )
@@ -807,12 +918,16 @@ async def play(
     if voice is None:
         return
 
+    # --------------------------------------------------------
+    # SEARCH
+    # --------------------------------------------------------
+
     async with get_lock(
         ctx.guild.id
     ):
 
         loading = await ctx.send(
-            "🔎 กำลังค้นหาเพลง..."
+            f"🔎 กำลังค้นหา **{query}** ..."
         )
 
         try:
@@ -829,14 +944,24 @@ async def play(
 
             print(error)
 
-            await loading.edit(
-                content=(
-                    "❌ ไม่สามารถดึงเพลงจาก YouTube ได้ครับ\n\n"
-                    "ดู Log ของ Hosting เพื่อดูสาเหตุ"
+            try:
+
+                await loading.edit(
+                    content=(
+                        "❌ YouTube ไม่ส่ง Audio "
+                        "ที่สามารถเล่นได้ครับ\n\n"
+                        "ดู Log เพิ่มเติมได้ครับ"
+                    )
                 )
-            )
+
+            except Exception:
+                pass
 
             return
+
+        # ----------------------------------------------------
+        # NO SONG
+        # ----------------------------------------------------
 
         if (
             song is None
@@ -856,7 +981,7 @@ async def play(
         )
 
         # ----------------------------------------------------
-        # ถ้ามีเพลงกำลังเล่น
+        # CURRENTLY PLAYING
         # ----------------------------------------------------
 
         if (
@@ -879,19 +1004,12 @@ async def play(
             return
 
         # ----------------------------------------------------
-        # เล่นทันที
+        # PLAY NOW
         # ----------------------------------------------------
 
         current_song[
             ctx.guild.id
         ] = song
-
-        try:
-
-            await loading.delete()
-
-        except Exception:
-            pass
 
         try:
 
@@ -907,11 +1025,17 @@ async def play(
                 f"[FFMPEG ERROR] {error}"
             )
 
-            await ctx.send(
-                "❌ ไม่สามารถเปิด Audio ได้ครับ"
+            await loading.edit(
+                content=(
+                    "❌ ไม่สามารถเปิด Audio ได้ครับ"
+                )
             )
 
             return
+
+        # ----------------------------------------------------
+        # CALLBACK
+        # ----------------------------------------------------
 
         def after_playing(error):
 
@@ -935,6 +1059,10 @@ async def play(
                     f"{callback_error}"
                 )
 
+        # ----------------------------------------------------
+        # PLAY
+        # ----------------------------------------------------
+
         try:
 
             voice.play(
@@ -948,11 +1076,20 @@ async def play(
                 f"[PLAY ERROR] {error}"
             )
 
-            await ctx.send(
-                "❌ ไม่สามารถเล่นเพลงได้ครับ"
+            await loading.edit(
+                content=(
+                    "❌ ไม่สามารถเล่นเพลงได้ครับ"
+                )
             )
 
             return
+
+        try:
+
+            await loading.delete()
+
+        except Exception:
+            pass
 
         await send_now_playing(
             ctx.channel,
@@ -1103,9 +1240,7 @@ async def stop(ctx):
 # QUEUE
 # ============================================================
 
-@bot.command(
-    name="queue"
-)
+@bot.command(name="queue")
 async def show_queue(ctx):
 
     queue = get_queue(
@@ -1227,9 +1362,7 @@ async def nowplaying(ctx):
 # HELP
 # ============================================================
 
-@bot.command(
-    name="help"
-)
+@bot.command(name="help")
 async def help_command(ctx):
 
     embed = discord.Embed(
